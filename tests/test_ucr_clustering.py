@@ -99,6 +99,8 @@ def test_ucr_dataset(
     normalize=True,
     k=None,
     generate_viz=True,
+    output_root=None,
+    viz_dir=None,
     similarity_metric="idk",
     window_size=None,
     window_step=None,
@@ -118,13 +120,15 @@ def test_ucr_dataset(
         k: Number of clusters. If None, uses ground truth number (supervised).
            Specify a number for true unsupervised clustering.
         generate_viz: Whether to generate visualization plots (default: True)
-                similarity_metric: Similarity metric name. Defaults to "idk".
-                window_size: Sliding window size for IDK-based time series representation.
+        output_root: Root directory for saved visualizations. Defaults to project/results.
+        viz_dir: Exact visualization output directory. Overrides output_root if provided.
+        similarity_metric: Similarity metric name. Defaults to "idk".
+        window_size: Sliding window size for IDK-based time series representation.
         window_step: Step size between successive sliding windows.
-                n_trees: Number of isolation trees used by the IDK backend.
-                sample_size: Number of samples per tree used by the IDK backend.
-                similarity_params: Extra keyword arguments reserved for future metrics.
-                return_details: If True, returns (success, details_dict).
+        n_trees: Number of isolation trees used by the IDK backend.
+        sample_size: Number of samples per tree used by the IDK backend.
+        similarity_params: Extra keyword arguments reserved for future metrics.
+        return_details: If True, returns (success, details_dict).
     """
     dataset_name = Path(train_file).stem.replace('_TRAIN', '')
     
@@ -232,13 +236,21 @@ def test_ucr_dataset(
     if generate_viz:
         print(f"\n[STEP 5] Generating visualizations...")
         metric_tag = similarity_metric.lower().strip()
-        output_dir = Path(__file__).parent.parent / "results" / f"{dataset_name}_{metric_tag}_viz"
+        if viz_dir is not None:
+            output_dir = Path(viz_dir)
+        else:
+            results_root = Path(output_root) if output_root is not None else Path(__file__).parent.parent / "results"
+            output_dir = results_root / dataset_name / f"{dataset_name}_{metric_tag}_viz"
         output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create metric display name
+        metric_display = similarity_metric.upper() if similarity_metric.lower() == "idk" else similarity_metric.capitalize()
         
         try:
             print(f"       [1/4] Plotting clustering results...")
             plot_clustering_results(
                 X, result.labels, result.medoids,
+                title=f"Time Series Clustering Results - {metric_display} Similarity",
                 figsize=(14, 10),
                 save_path=str(output_dir / "clustering_results.png"),
             )
@@ -246,6 +258,7 @@ def test_ucr_dataset(
             print(f"       [2/4] Plotting distance matrix...")
             plot_distance_matrix(
                 result.distance_matrix, labels=result.labels,
+                title=f"Distance Matrix Heatmap - {metric_display} Similarity",
                 figsize=(12, 11),
                 save_path=str(output_dir / "distance_matrix.png"),
             )
@@ -253,6 +266,7 @@ def test_ucr_dataset(
             print(f"       [3/4] Plotting medoids comparison...")
             plot_medoids_comparison(
                 X, result.labels, result.medoids,
+                title=f"Medoids Comparison - {metric_display} Similarity",
                 figsize=(16, 5),
                 save_path=str(output_dir / "medoids_comparison.png"),
             )
@@ -260,6 +274,7 @@ def test_ucr_dataset(
             print(f"       [4/4] Plotting cluster statistics...")
             plot_cluster_statistics(
                 result.distance_matrix, result.labels,
+                title=f"Clustering Statistics - {metric_display} Similarity",
                 figsize=(14, 5),
                 save_path=str(output_dir / "cluster_statistics.png"),
             )
@@ -302,6 +317,8 @@ def compare_idk_vs_euclidean(
     normalize=True,
     k=None,
     generate_viz=False,
+    output_root=None,
+    viz_dir=None,
     window_size=None,
     window_step=None,
     n_trees=200,
@@ -326,6 +343,8 @@ def compare_idk_vs_euclidean(
             normalize=normalize,
             k=k,
             generate_viz=generate_viz,
+            output_root=output_root,
+            viz_dir=viz_dir,
             similarity_metric=run["name"],
             window_size=window_size,
             window_step=window_step,
