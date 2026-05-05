@@ -93,6 +93,14 @@ python tests/test_ucr_clustering.py \
   --k 10 --no-viz --compare-metrics
 ```
 
+`scripts/run_ucr_unsupervised_compare.py`提供了简便的对比方式，可以自动选择较为合适的参数。
+
+```bash
+python scripts/run_ucr_unsupervised_compare.py \
+ACSF1 --k-min 2 --k-max 6 [no-viz]
+```
+
+
 说明：
 - compare 模式会连续跑两次：idk 与 euclidean。
 - 末尾会输出汇总表：NMI、ARI、Runtime 以及差值 ΔNMI/ΔARI。
@@ -176,3 +184,86 @@ print(result.labels)
 ## 8. 备注
 
 本 README 仅保留当前代码已实现且可直接运行的流程，已删除历史版本中不再使用或与现有脚本不一致的说明。
+
+## 9. 扩展：如何添加其它距离/相似度度量（例如 DTW、MSM）
+
+当你想比较更多时间序列距离度量（例如 DTW、MSM、LB_Keogh、Shape-Based Distance 等），建议按下面步骤将新度量集成到项目中：
+
+1) 安装所需依赖（示例）
+
+```bash
+# 推荐的库：
+# - dtaidistance: 高效的 DTW 实现
+# - tslearn: 提供 DTW、MSM、KShape 等时间序列方法
+pip install dtaidistance tslearn
+```
+
+2) 在 `isolation_kernel/clustering.py` 中添加 dispatch 分支
+
+示例（伪代码）：
+
+```python
+from dtaidistance import dtw
+from tslearn.metrics import cdist_dtw
+
+if similarity_metric == "dtw":
+  # 计算成距离矩阵（示例：使用 tslearn 的 cdist_dtw）
+  dist = cdist_dtw(X)
+  sim = 1.0 / (1.0 + dist)
+elif similarity_metric == "msm":
+  # tslearn 中可能没有直接 MSM 实现，或使用自定义实现
+  dist = custom_msm_distance_matrix(X, **similarity_params)
+  sim = 1.0 / (1.0 + dist)
+```
+
+3) 如果度量需要预处理（例如 DTW 常处理不同长度的序列或需要归一化），请在 `cluster_time_series()` 中的 `normalize` 或在度量分支里显式处理。
+
+4) 写入包装函数与测试用例
+
+- 在 `tests/test_ucr_clustering.py` 的 CLI 中，`--similarity-metric` 已支持传入字符串。添加新度量后，可以直接通过命令行调用：
+
+```bash
+python tests/test_ucr_clustering.py --train <TRAIN> --test <TEST> --similarity-metric dtw --k 3
+```
+
+- 为新度量写一个单元测试（例如 `tests/test_metrics.py`），验证计算的距离矩阵满足对称性、对角为 0 等属性。
+
+5) 运行基准并记录结果
+
+- 使用已有的 `scripts/run_ucr_unsupervised_compare.py` 做批量对比（脚本会自动调用 `test_ucr_clustering.py`），例如：
+
+```bash
+python scripts/run_ucr_unsupervised_compare.py BeetleFly --k-min 2 --k-max 6
+```
+
+6) 性能与加速建议
+
+- DTW 等度量计算成本高，建议：
+  - 在 sweep 前使用 `--n-samples` 做抽样测试
+  - 使用向量化或 C/Numba 实现的库（如 `dtaidistance` 的 C 绑定）
+  - 并行计算距离矩阵（注意内存）
+
+7) 参数和可复现性
+
+- 将所有重要参数（度量名、window_size、window_step、n_trees、sample_size、随机种子）写入输出 `summary.json`，便于复现实验。
+
+8) 示例：集成 DTW（详细示例）
+
+在 `isolation_kernel/clustering.py` 的 `cluster_time_series()` 中添加：
+
+```python
+elif similarity_metric == "dtw":
+  # 使用 tslearn 计算序列间 DTW 距离（需要先 pip install tslearn）
+  from tslearn.metrics import cdist_dtw
+
+  # X 的 shape 为 (n_samples, series_length)
+  dist = cdist_dtw(X)
+  sim = 1.0 / (1.0 + dist)
+```
+
+注意：对于变长序列，先用 `np.nan` 填充到相同长度或使用 tslearn 的工具将序列包装为 `TimeSeries`。一般来说直接用等长数据集即可。
+
+9) 将新度量记录到 README
+
+在添加新度量后，更新本 README 的第 3 节或第 5 节，给出使用示例（如上）。
+
