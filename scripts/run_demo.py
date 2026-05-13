@@ -2,7 +2,7 @@ import argparse
 
 import numpy as np
 
-from isolation_kernel.clustering import cluster_time_series
+from tsclust.clustering import cluster_time_series
 
 
 def _generate_demo(n_per_cluster: int, length: int, random_state: int) -> np.ndarray:
@@ -23,13 +23,19 @@ def _load_csv(path: str) -> np.ndarray:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Isolation Kernel + k-medoids demo")
-    parser.add_argument("--input", type=str, default="", help="CSV path; rows are series")
+    parser = argparse.ArgumentParser(
+        description="Isolation Kernel + k-medoids demo")
+    parser.add_argument("--input", type=str, default="",
+                        help="CSV path; rows are series")
     parser.add_argument("--k", type=int, default=3, help="Number of clusters")
-    parser.add_argument("--n-trees", type=int, default=200, help="Number of trees")
-    parser.add_argument("--sample-size", type=int, default=256, help="Subsample size")
-    parser.add_argument("--length", type=int, default=120, help="Demo series length")
-    parser.add_argument("--per-cluster", type=int, default=30, help="Demo series per cluster")
+    parser.add_argument("--n-trees", type=int, default=200,
+                        help="Number of trees")
+    parser.add_argument("--sample-size", type=int,
+                        default=256, help="Subsample size")
+    parser.add_argument("--length", type=int, default=120,
+                        help="Demo series length")
+    parser.add_argument("--per-cluster", type=int,
+                        default=30, help="Demo series per cluster")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     args = parser.parse_args()
 

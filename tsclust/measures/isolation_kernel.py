@@ -30,7 +30,8 @@ class IsolationKernel:
     def _validate_series_matrix(self, X: np.ndarray) -> np.ndarray:
         X = np.asarray(X, dtype=float)
         if X.ndim != 2:
-            raise ValueError("X must be a 2D array with shape (n_samples, series_length)")
+            raise ValueError(
+                "X must be a 2D array with shape (n_samples, series_length)")
         if X.shape[0] == 0:
             raise ValueError("X must contain at least one sample")
         return X
@@ -52,7 +53,7 @@ class IsolationKernel:
         # Generate windows using a sliding window approach
         return np.vstack(
             [
-                series[i : i + window_size]
+                series[i: i + window_size]
                 for i in range(0, series.shape[0] - window_size + 1, window_step)
             ]
         )
@@ -74,7 +75,8 @@ class IsolationKernel:
         return np.vstack(window_blocks), counts
 
     def _series_embedding(self, series: np.ndarray) -> np.ndarray:
-        embedded = self._kernel.iso_kernel_.transform(self._series_windows(series))
+        embedded = self._kernel.iso_kernel_.transform(
+            self._series_windows(series))
         return np.asarray(embedded.mean(axis=0)).ravel()
 
     # fit: Fits the Isolation Kernel model to the input time series data.
@@ -103,7 +105,7 @@ class IsolationKernel:
         window_matrix, _ = self._window_batches(X)
 
         # Fit the IsoDisKernel model using the extracted windows
-        # .kernel: The fitted IsoDisKernel model that will be used for 
+        # .kernel: The fitted IsoDisKernel model that will be used for
         # transforming the time series data into embeddings.
         self._kernel: Any = IsoDisKernel(
             method=self.method,
@@ -116,7 +118,8 @@ class IsolationKernel:
 
     def _check_is_fitted(self) -> None:
         if not hasattr(self, "_kernel"):
-            raise RuntimeError("IsolationKernel is not fitted. Call fit() first.")
+            raise RuntimeError(
+                "IsolationKernel is not fitted. Call fit() first.")
 
     # transform: Transforms the input time series data into a new feature space
     # using the fitted Isolation Kernel model.
@@ -132,7 +135,7 @@ class IsolationKernel:
         embeddings = []
         start = 0
         for count in counts:
-            series_windows = window_embeddings[start : start + count]
+            series_windows = window_embeddings[start: start + count]
             embeddings.append(np.asarray(series_windows.mean(axis=0)).ravel())
             start += count
         return np.vstack(embeddings)

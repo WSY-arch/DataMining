@@ -4,10 +4,14 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
-from sklearn.metrics import pairwise_distances
 
-from .isolation_kernel import IsolationKernel
 from .k_medoids import k_medoids
+from ..measures.similarity_measures import (
+    distance_to_similarity,
+    dtw_distance_matrix,
+    euclidean_distance_matrix,
+    msm_distance_matrix,
+)
 
 
 @dataclass
@@ -39,7 +43,8 @@ def cluster_time_series(
 ) -> ClusteringResult:
     X = np.asarray(X, dtype=float)
     if X.ndim != 2:
-        raise ValueError("X must be a 2D array with shape (n_samples, series_length)")
+        raise ValueError(
+            "X must be a 2D array with shape (n_samples, series_length)")
 
     similarity_metric = similarity_metric.lower().strip()
     similarity_params = dict(similarity_params or {})
@@ -48,6 +53,8 @@ def cluster_time_series(
         X = _zscore_normalize(X)
 
     if similarity_metric == "idk":
+        from ..measures.isolation_kernel import IsolationKernel
+
         kernel = IsolationKernel(
             n_trees=n_trees,
             sample_size=sample_size,
@@ -58,12 +65,22 @@ def cluster_time_series(
         ).fit(X)
         sim = kernel.similarity_matrix(X)
         dist = 1.0 - sim
-    elif similarity_metric in {"euclidean", "euclid"}:
-        dist = pairwise_distances(X, metric="euclidean")
-        sim = 1.0 / (1.0 + dist)
+    elif similarity_metric in {"euclidean", "euclid", "ed"}:
+        dist = euclidean_distance_matrix(X)
+        sim = distance_to_similarity(dist)
+    elif similarity_metric == "dtw":
+        dtw_window = similarity_params.pop("window", None)
+        backend = similarity_params.pop("backend", "auto")
+        dist = dtw_distance_matrix(X, window=dtw_window, backend=backend)
+        sim = distance_to_similarity(dist)
+    elif similarity_metric == "msm":
+        msm_c = float(similarity_params.pop("c", 0.1))
+        backend = similarity_params.pop("backend", "auto")
+        dist = msm_distance_matrix(X, c=msm_c, backend=backend)
+        sim = distance_to_similarity(dist)
     else:
         raise NotImplementedError(
-            f"similarity_metric={similarity_metric!r} is reserved for future comparison experiments. Supported values: 'idk', 'euclidean'."
+            f"similarity_metric={similarity_metric!r} is reserved for future comparison experiments. Supported values: 'idk', 'euclidean', 'dtw', 'msm'."
         )
 
     medoids, labels = k_medoids(dist, k=k, random_state=random_state)
