@@ -1,45 +1,45 @@
-# Chen Report Draft Sections
+# Chen 报告草稿部分
 
 ## Introduction draft
 
-Time-series clustering depends critically on how similarity between series is defined. Different similarity measures encode different assumptions about alignment, temporal variation, and signal structure. A lock-step measure such as Euclidean distance compares time points directly, while elastic measures such as DTW and MSM allow local temporal warping. Sliding measures such as SBD emphasize shape similarity under global phase shift. Distributional kernels such as IDK take a different view by comparing time series through distributions rather than explicit point-to-point alignment.
+时间序列聚类在很大程度上取决于如何定义序列之间的相似性。不同相似性度量编码了不同的 alignment、temporal variation 和 signal structure 假设。Euclidean distance 这类 lock-step measure 会逐时间点直接比较；DTW 和 MSM 这类 elastic measures 允许局部 temporal warping；SBD 这类 sliding measure 强调 global phase shift 下的 shape similarity；IDK 这类 distributional kernel 则采用不同视角，通过 distributions 比较时间序列，而不是显式进行 point-to-point alignment。
 
-Prior benchmark studies have compared many time-series distances and clustering methods, but they usually focus on average performance across archive datasets. This leaves a mechanism-level question open: how do noise, temporal misalignment, and sequence length change the relative behavior of different similarity paradigms? This question is especially important because a measure that performs well on clean, aligned series may fail under shift or noise, while a more invariant measure may discard temporal information needed for some classes.
+已有 benchmark studies 比较了许多 time-series distances 和 clustering methods，但它们通常关注 archive datasets 上的平均表现。这留下了一个机制层面的问题：noise、temporal misalignment 和 sequence length 如何改变不同 similarity paradigms 的相对表现？这个问题尤其重要，因为一种 measure 可能在干净、对齐的数据上表现很好，但在 shift 或 noise 下失效；而更具 invariance 的 measure 又可能丢失某些类别所需的 temporal information。
 
-This project addresses the gap by comparing ED, DTW, MSM, SBD, and IDK under a unified time-series clustering framework. We combine a real-data benchmark on selected UCR datasets with controlled perturbation experiments. Rather than seeking a single universal winner, we aim to explain when each similarity paradigm is appropriate.
+本项目通过统一的 time-series clustering framework 比较 ED、DTW、MSM、SBD 和 IDK，从而回应这一 gap。我们结合 selected UCR datasets 上的 real-data benchmark 和 controlled perturbation experiments。我们的目标不是寻找单一 universal winner，而是解释每种 similarity paradigm 在什么条件下更合适。
 
 ## Related Work structure
 
 ### Benchmark studies of time-series distances
 
-Discuss broad distance benchmarks such as Paparrizos et al. and d'Hondt et al. as the foundation for cross-paradigm comparison. Emphasize their taxonomy, normalization findings, and statistical rigor, but note that they are not primarily mechanism-oriented clustering studies.
+讨论 Paparrizos et al. 和 d'Hondt et al. 等 broad distance benchmarks，将它们作为 cross-paradigm comparison 的基础。强调它们的 taxonomy、normalization findings 和 statistical rigor，但也指出它们并不是以机制导向 clustering 为主。
 
 ### Time-series clustering benchmarks
 
-Discuss ED/DTW/SBD clustering comparisons and comprehensive clustering benchmarks. Position them as direct baselines for the project, while noting the absence of IDK and controlled noise/shift/length sweeps.
+讨论 ED/DTW/SBD clustering comparisons 和 comprehensive clustering benchmarks。将它们定位为本项目的直接 baseline，同时指出这些工作缺少 IDK，也缺少受控 noise/shift/length sweeps。
 
 ### Elastic distances for clustering
 
-Use Holder and Bagnall to justify including MSM in addition to DTW. Highlight the finding that clustering performance depends on matching the distance geometry to the clustering objective; this supports the project's k-medoids design.
+使用 Holder and Bagnall 说明为什么除了 DTW 之外还要包含 MSM。强调 clustering performance 取决于 distance geometry 与 clustering objective 的匹配；这也支持本项目采用 k-medoids 的设计。
 
 ### Distributional and IDK-based approaches
 
-Introduce distributional treatments of time series and IDK-related clustering work. The key framing is that IDK represents a distributional paradigm, not merely an extra distance plugged into the benchmark.
+介绍时间序列的 distributional treatments 和 IDK-related clustering work。核心 framing 是：IDK 代表一种 distributional paradigm，而不仅仅是 benchmark 中额外加入的一个 distance。
 
 ## Methodology draft
 
-We evaluate univariate whole time-series clustering with a unified k-medoids pipeline. Each dataset is represented as `X` with shape `(n_samples, series_length)`, and the number of clusters is set to the ground-truth number of classes only for evaluation fairness. Labels are not used during clustering. All series are z-normalized before similarity computation.
+我们使用统一的 k-medoids pipeline 评估单变量 whole time-series clustering。每个数据集表示为 shape 为 `(n_samples, series_length)` 的 `X`；聚类数设置为 ground-truth 类别数，仅用于公平评价。Labels 不参与 clustering。所有序列在计算相似性前都会进行 z-normalization。
 
-The real-data benchmark uses selected UCR datasets spanning short to long sequences, binary to multi-class settings, and multiple domains. For each dataset and similarity measure, we compute a pairwise distance matrix, run k-medoids with a fixed random seed, and report ARI, NMI, and runtime. Results are summarized per dataset and by average ranks, with Friedman testing used for global comparison.
+Real-data benchmark 使用 selected UCR datasets，覆盖短到长的序列、binary 到 multi-class 的设置，以及多个 domains。对于每个 dataset 和 similarity measure，我们计算 pairwise distance matrix，使用固定 random seed 运行 k-medoids，并报告 ARI、NMI 和 runtime。结果按 dataset 汇总，并通过 average ranks 进行比较；global comparison 使用 Friedman test。
 
-The perturbation study uses representative datasets such as CBF, Trace, and ECG200. We apply three controlled transformations: additive Gaussian noise, random global temporal shift, and truncation with padding to simulate reduced effective length. For each perturbation level, we rerun the same clustering pipeline and plot degradation curves. These curves are interpreted through the invariance assumptions of each similarity paradigm.
+Perturbation study 使用 CBF、Trace 和 ECG200 等代表性数据集。我们施加三种受控 transformation：additive Gaussian noise、random global temporal shift，以及 truncate with padding 来模拟 reduced effective length。对于每个 perturbation level，我们重新运行相同的 clustering pipeline，并绘制 degradation curves。这些曲线会根据每种 similarity paradigm 的 invariance assumptions 进行解释。
 
 ## Method mechanism table
 
 | Measure | Mechanism | Expected perturbation behavior |
 |---|---|---|
-| ED | Pointwise lock-step alignment | Fast and strong on aligned data; degrades under shift. |
-| DTW | Local elastic warping | More robust to local timing changes; may overfit noise. |
-| MSM | Edit plus warp operations | Often more stable than DTW; parameter-sensitive. |
-| SBD | Normalized cross-correlation with sliding shift | Strong under global phase shift; weaker under local warping. |
-| IDK | Distributional kernel over subsequence structure | May improve with longer sequences; can lose temporal order. |
+| ED | Pointwise lock-step alignment | 对 aligned data 快且强；在 shift 下退化。 |
+| DTW | Local elastic warping | 对 local timing changes 更鲁棒；可能 overfit noise。 |
+| MSM | Edit plus warp operations | 通常比 DTW 更稳定；对参数敏感。 |
+| SBD | Normalized cross-correlation with sliding shift | 在 global phase shift 下表现强；在 local warping 下较弱。 |
+| IDK | Distributional kernel over subsequence structure | 可能随序列变长而改善；可能丢失 temporal order。 |

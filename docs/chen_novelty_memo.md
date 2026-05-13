@@ -1,45 +1,45 @@
-# Novelty Memo: Mechanism-Oriented Time-Series Clustering Similarity Comparison
+# Novelty Memo：机制导向的时间序列聚类相似性比较
 
-## One-sentence position
+## 一句话定位
 
-This project studies when different time-series similarity paradigms work, not only which one wins on average, by comparing lock-step, elastic, sliding, and distributional similarities under controlled noise, temporal misalignment, and length perturbations.
+本项目研究不同时间序列相似性范式在什么条件下有效，而不仅仅是谁的平均表现最好。我们会在受控噪声、时间错位和长度扰动下，比较 lock-step、elastic、sliding 和 distributional 相似性。
 
-## Literature gap
+## 文献 gap
 
-Existing time-series distance benchmarks are broad but usually classification-oriented or performance-oriented. Large studies compare many distances and normalizations, but they rarely isolate noise, temporal shift, and sequence length as controlled experimental factors in clustering.
+现有时间序列距离 benchmark 覆盖范围很广，但通常偏向分类任务或整体性能比较。大型研究比较了许多距离和 normalization 方法，但很少在 clustering 场景中把 noise、temporal shift 和 sequence length 作为受控实验因素单独分析。
 
-Existing clustering benchmarks cover important baselines such as ED, DTW, and SBD, and elastic-distance studies show that MSM/TWE can outperform plain DTW when the clustering objective is appropriate. However, these works do not give distributional kernels such as IDK equal footing in a unified clustering comparison.
+现有 clustering benchmark 覆盖了 ED、DTW 和 SBD 等重要 baseline；elastic-distance 研究也表明，当 clustering objective 合适时，MSM/TWE 可以优于普通 DTW。然而，这些工作并没有在统一的 clustering 比较中给予 IDK 这类 distributional kernel 同等地位。
 
-Robustness and invariance papers provide useful perturbation designs for shift, warp, and noise, but they are usually model-selection frameworks or domain-specific studies rather than a cross-paradigm clustering benchmark. Sequence length is especially under-studied as an independent mechanism; most papers treat it as a computational issue or let it vary naturally across datasets.
+鲁棒性和不变性相关论文为 shift、warp 和 noise 提供了有用的扰动设计，但它们通常是 model-selection framework 或特定领域研究，而不是跨范式 clustering benchmark。Sequence length 作为独立机制尤其缺乏研究；多数论文只是把它当作计算复杂度问题，或让它在数据集之间自然变化。
 
-## Proposed contribution
+## 拟贡献
 
-We contribute a fair, mechanism-oriented comparison of representative similarity measures:
+我们贡献一个公平的、机制导向的代表性相似性度量比较：
 
-- ED as the lock-step baseline.
-- DTW and MSM as elastic alignment measures.
-- SBD as the sliding/shift-invariant measure.
-- IDK as the distributional-kernel measure.
+- ED 作为 lock-step baseline。
+- DTW 和 MSM 作为 elastic alignment measures。
+- SBD 作为 sliding/shift-invariant measure。
+- IDK 作为 distributional-kernel measure。
 
-The key novelty is the combination of:
+核心 novelty 来自以下组合：
 
-- General-purpose univariate whole-series clustering.
-- A unified k-medoids interface and shared result schema.
-- Real UCR benchmark datasets plus controlled perturbation experiments.
-- Mechanistic interpretation of degradation curves under noise, shift, and length changes.
+- 通用的单变量 whole-series clustering。
+- 统一的 k-medoids 接口和共享结果 schema。
+- 真实 UCR benchmark 数据集加受控扰动实验。
+- 对 noise、shift 和 length 变化下 degradation curves 的机制解释。
 
-## Expected mechanism hypotheses
+## 预期机制假设
 
 | Measure | Paradigm | Expected strength | Expected weakness |
 |---|---|---|---|
-| ED | Lock-step | Strong when series are well aligned and shape differences are direct. | Sensitive to temporal shift and local warping. |
-| DTW | Elastic | Handles local timing differences by warping the time axis. | Can over-warp noise and is computationally expensive. |
-| MSM | Elastic/edit | More stable than pure DTW because edit operations regularize warping. | Requires a cost parameter and may still be sensitive to strong noise. |
-| SBD | Sliding | Robust to global phase shift via cross-correlation. | Less suited to local speed changes or non-shape distributional differences. |
-| IDK | Distributional | Can be robust when order/alignment is less important and longer sequences estimate distributions better. | May lose temporal-order information that matters for some classes. |
+| ED | Lock-step | 当序列对齐良好、shape 差异直接可见时表现强。 | 对 temporal shift 和 local warping 敏感。 |
+| DTW | Elastic | 通过 time-axis warping 处理局部 timing differences。 | 可能 over-warp noise，且计算代价较高。 |
+| MSM | Elastic/edit | edit operations 对 warping 起到 regularization 作用，因此通常比纯 DTW 更稳定。 | 需要 cost parameter，并且仍可能对强噪声敏感。 |
+| SBD | Sliding | 通过 cross-correlation 对 global phase shift 鲁棒。 | 不太适合 local speed changes 或非 shape 的 distributional differences。 |
+| IDK | Distributional | 当顺序/对齐不那么重要时可能更鲁棒；长序列能更好估计 distributions。 | 可能丢失某些类别所需的 temporal-order information。 |
 
 ## Claim discipline
 
-The project should not claim that IDK is universally better. A stronger and more defensible claim is:
+项目不应宣称 IDK 普遍更好。更强且更可辩护的 claim 是：
 
-> Different similarity measures encode different invariances; the best choice depends on the data-generating mechanism, especially noise, misalignment, and effective sequence length.
+> 不同相似性度量编码了不同 invariances；最佳选择取决于 data-generating mechanism，尤其是 noise、misalignment 和 effective sequence length。

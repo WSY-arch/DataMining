@@ -3,7 +3,4 @@ matplotlib>=3.5
 scikit-learn>=1.3
 scipy>=1.10
 ikpykit==0.2.4
-
-# Preferred backend for formal DTW/MSM benchmark runs.
-# Install before final experiments if environment allows:
-# aeon>=0.11
+aeon>=1.1
