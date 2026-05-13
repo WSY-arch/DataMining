@@ -6,8 +6,8 @@ import argparse
 import numpy as np
 from pathlib import Path
 
-from isolation_kernel.clustering import cluster_time_series
-from isolation_kernel.visualization import (
+from tsclust.clustering import cluster_time_series
+from tsclust.visualization import (
     plot_clustering_results,
     plot_distance_matrix,
     plot_medoids_comparison,

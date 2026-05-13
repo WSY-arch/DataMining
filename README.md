@@ -1,19 +1,25 @@
-# Isolation Kernel + K-Medoids 单变量时间序列聚类
+# tsclust：Isolation Kernel + K-Medoids 单变量时间序列聚类
 
-本项目用于课程实验：在同一聚类算法（K-Medoids）下，对比不同相似度度量（IDK 与 Euclidean）对聚类效果的影响。
+本项目用于课程实验：在同一聚类算法（K-Medoids）下，对比不同相似度度量（IDK / ED / DTW / MSM 等）对聚类效果的影响。
 
 ## 1. 项目结构
 
 ```text
 code/
-├── isolation_kernel/
-│   ├── isolation_kernel.py      # IDK 相似度实现
-│   ├── k_medoids.py             # K-Medoids(PAM)
-│   ├── clustering.py            # 统一聚类入口（支持 idk/euclidean）
-│   └── visualization.py         # 可视化工具
+├── tsclust/                        # 项目核心包
+│   ├── measures/                   # 相似性 / 距离度量
+│   │   ├── isolation_kernel.py     # IDK 相似度实现
+│   │   └── similarity_measures.py  # ED / DTW / MSM
+│   ├── clustering/                 # 聚类算法 + 统一入口
+│   │   ├── k_medoids.py            # K-Medoids(PAM)
+│   │   └── clustering.py           # cluster_time_series() dispatch
+│   └── visualization/              # 可视化工具
+│       └── visualization.py
 ├── tests/
-│   ├── test_clustering.py       # 合成数据测试
-│   └── test_ucr_clustering.py   # UCR 数据测试 + 指标对比
+│   ├── test_clustering.py          # 合成数据测试
+│   ├── test_similarity_measures.py # DTW/MSM 基本性质
+│   └── test_ucr_clustering.py      # UCR 数据测试 + 指标对比
+├── scripts/                        # 实验脚本（chen_*、run_*）
 ├── data/
 ├── results/
 └── requirements.txt
@@ -23,7 +29,9 @@ code/
 
 ### 2.1. 环境配置
 
-建议使用项目本地虚拟环境 .venv。
+**Python 版本要求：Python 3.11（至少 3.10，因为代码使用 `X | Y` PEP 604 联合类型语法）。**
+
+建议使用项目本地虚拟环境 .venv，并与协作者统一到同一 Python 版本，避免随机数流/数值精度跨版本漂移。
 
 ```bash
 cd code
@@ -153,7 +161,7 @@ python tests/test_ucr_clustering.py \
 
 ```python
 import numpy as np
-from isolation_kernel.clustering import cluster_time_series
+from tsclust.clustering import cluster_time_series
 
 X = np.random.randn(50, 100)
 
@@ -198,7 +206,7 @@ print(result.labels)
 pip install dtaidistance tslearn
 ```
 
-2) 在 `isolation_kernel/clustering.py` 中添加 dispatch 分支
+2) 在 `tsclust/clustering/clustering.py` 中添加 dispatch 分支
 
 示例（伪代码）：
 
@@ -249,7 +257,7 @@ python scripts/run_ucr_unsupervised_compare.py BeetleFly --k-min 2 --k-max 6
 
 8) 示例：集成 DTW（详细示例）
 
-在 `isolation_kernel/clustering.py` 的 `cluster_time_series()` 中添加：
+在 `tsclust/clustering/clustering.py` 的 `cluster_time_series()` 中添加：
 
 ```python
 elif similarity_metric == "dtw":

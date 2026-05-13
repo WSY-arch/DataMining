@@ -9,10 +9,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from isolation_kernel.isolation_kernel import IsolationKernel
-from isolation_kernel.k_medoids import k_medoids
-from isolation_kernel.clustering import cluster_time_series
-from isolation_kernel.visualization import (
+from tsclust.measures.isolation_kernel import IsolationKernel
+from tsclust.clustering import cluster_time_series, k_medoids
+from tsclust.visualization import (
     plot_clustering_results,
     plot_distance_matrix,
     plot_medoids_comparison,

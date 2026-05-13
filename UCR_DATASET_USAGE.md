@@ -1,4 +1,34 @@
 # 使用 UCR 时间序列数据测试聚类
+注：z-normalization前的sampling建议：
+| Dataset             |    N | Length | Size level   | 建议                     |
+| ------------------- | ---: | -----: | ------------ | ------------------------ |
+| Coffee              |   56 |    286 | Small        | 全量跑                   |
+| Beef                |   60 |    470 | Small        | 全量跑                   |
+| FaceFour            |  112 |    350 | Small        | 全量跑                   |
+| ECG200              |  200 |     96 | Small        | 全量跑                   |
+| GunPoint            |  200 |    150 | Small        | 全量跑                   |
+| Trace               |  200 |    275 | Small-Medium | 全量跑                   |
+| Plane               |  210 |    144 | Small        | 全量跑                   |
+| ArrowHead           |  211 |    251 | Small-Medium | 全量跑                   |
+| DiatomSizeReduction |  322 |    345 | Medium       | 尽量全量                 |
+| OSULeaf             |  442 |    427 | Medium       | 尽量全量，慢的话采样     |
+| SyntheticControl    |  600 |     60 | Medium       | 全量或每类采样           |
+| ECGFiveDays         |  884 |    136 | Medium-Large | 先采样，资源够再全量     |
+| CBF                 |  930 |    128 | Medium-Large | 先采样，资源够再全量     |
+| Symbols             | 1020 |    398 | Large        | 建议 stratified sampling |
+| ItalyPowerDemand    | 1096 |     24 | Medium       | 长度短，可尝试全量       |
+| MoteStrain          | 1272 |     84 | Large-ish    | 建议采样或谨慎全量       |
+| Mallat              | 2400 |   1024 | Very Large   | 强烈建议采样             |
+| TwoPatterns         | 5000 |    128 | Very Large   | 强烈建议采样             |
+
+
+```text
+正式主实验：
+Small / Small-Medium 全量
+Medium 尽量全量
+Large / Very Large 每类 50 或 100 条 stratified sampling
+```
+
 
 ## 快速开始
 
@@ -118,7 +148,7 @@ python tests/test_ucr_clustering.py \
 
 一旦验证了基本聚类的效果，可以开始探究不同相似度度量的影响：
 
-1. **修改** `isolation_kernel/isolation_kernel.py` 中的 `similarity_matrix()` 方法
+1. **修改** `tsclust/measures/isolation_kernel.py` 中的 `similarity_matrix()` 方法
 2. **实现**不同的相似度计算方法（Euclidean、DTW、Correlation 等）
 3. **对比**不同相似度度量的聚类质量
 4. **生成**对比报告和可视化

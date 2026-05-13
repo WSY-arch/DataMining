@@ -2,7 +2,7 @@ import argparse
 
 import numpy as np
 
-from isolation_kernel.clustering import cluster_time_series
+from tsclust.clustering import cluster_time_series
 
 
 def _generate_demo(n_per_cluster: int, length: int, random_state: int) -> np.ndarray:
