@@ -43,7 +43,8 @@ def cluster_time_series(
 ) -> ClusteringResult:
     X = np.asarray(X, dtype=float)
     if X.ndim != 2:
-        raise ValueError("X must be a 2D array with shape (n_samples, series_length)")
+        raise ValueError(
+            "X must be a 2D array with shape (n_samples, series_length)")
 
     similarity_metric = similarity_metric.lower().strip()
     similarity_params = dict(similarity_params or {})

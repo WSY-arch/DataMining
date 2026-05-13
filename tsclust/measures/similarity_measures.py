@@ -15,7 +15,8 @@ def _call_aeon_pairwise_distance(X: np.ndarray, method: str) -> np.ndarray:
     try:
         from aeon import distances as aeon_distances
     except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("aeon is not installed. Install it or use backend='reference'.") from exc
+        raise ModuleNotFoundError(
+            "aeon is not installed. Install it or use backend='reference'.") from exc
 
     direct_name = f"{method}_pairwise_distance"
     if hasattr(aeon_distances, direct_name):
@@ -24,14 +25,16 @@ def _call_aeon_pairwise_distance(X: np.ndarray, method: str) -> np.ndarray:
     if hasattr(aeon_distances, "pairwise_distance"):
         return np.asarray(aeon_distances.pairwise_distance(X, method=method), dtype=float)
 
-    raise AttributeError(f"Installed aeon version does not expose a pairwise {method!r} distance API.")
+    raise AttributeError(
+        f"Installed aeon version does not expose a pairwise {method!r} distance API.")
 
 
 def _call_tslearn_dtw_distance_matrix(X: np.ndarray, window: int | None = None) -> np.ndarray:
     try:
         from tslearn.metrics import cdist_dtw
     except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError("tslearn is not installed. Install it or use backend='reference'.") from exc
+        raise ModuleNotFoundError(
+            "tslearn is not installed. Install it or use backend='reference'.") from exc
 
     if window is None:
         return np.asarray(cdist_dtw(X), dtype=float)
@@ -60,7 +63,8 @@ def dtw_distance(x: np.ndarray, y: np.ndarray, window: int | None = None) -> flo
         j_end = min(m, i + window)
         for j in range(j_start, j_end + 1):
             cost = (x[i - 1] - y[j - 1]) ** 2
-            current[j] = cost + min(previous[j], current[j - 1], previous[j - 1])
+            current[j] = cost + \
+                min(previous[j], current[j - 1], previous[j - 1])
         previous, current = current, previous
 
     return float(np.sqrt(previous[m]))

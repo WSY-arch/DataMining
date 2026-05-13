@@ -1,16 +1,15 @@
+from tsclust.measures.similarity_measures import (
+    dtw_distance,
+    msm_distance,
+    pairwise_time_series_distance_matrix,
+)
+from tsclust.clustering import cluster_time_series
 import sys
 from pathlib import Path
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from tsclust.clustering import cluster_time_series
-from tsclust.measures.similarity_measures import (
-    dtw_distance,
-    msm_distance,
-    pairwise_time_series_distance_matrix,
-)
 
 
 def test_dtw_distance_basic_properties():
@@ -49,6 +48,13 @@ def test_pairwise_matrix_and_clustering_dispatch():
     assert np.allclose(np.diag(dist), 0.0)
 
     for metric in ["ed", "dtw", "msm"]:
-        result = cluster_time_series(X, k=2, similarity_metric=metric, normalize=False, random_state=42)
+        result = cluster_time_series(
+            X,
+            k=2,
+            similarity_metric=metric,
+            similarity_params={"backend": "reference"},
+            normalize=False,
+            random_state=42,
+        )
         assert result.distance_matrix.shape == (4, 4)
         assert result.labels.shape == (4,)
