@@ -32,14 +32,22 @@
 
 Real-data benchmark 使用 selected UCR datasets，覆盖短到长的序列、binary 到 multi-class 的设置，以及多个 domains。对于每个 dataset 和 similarity measure，我们计算 pairwise distance matrix，使用固定 random seed 运行 k-medoids，并报告 ARI、NMI 和 runtime。结果按 dataset 汇总，并通过 average ranks 进行比较；global comparison 使用 Friedman test。
 
-Perturbation study 使用 CBF、Trace 和 ECG200 等代表性数据集。我们施加三种受控 transformation：additive Gaussian noise、random global temporal shift，以及 truncate with padding 来模拟 reduced effective length。对于每个 perturbation level，我们重新运行相同的 clustering pipeline，并绘制 degradation curves。这些曲线会根据每种 similarity paradigm 的 invariance assumptions 进行解释。
+Perturbation study 使用 CBF、Trace 和 ECG200 等代表性数据集。我们施加三种受控 transformation：additive Gaussian noise、random global temporal shift，以及 truncate with resample 来模拟 reduced temporal resolution。对于每个 perturbation level，我们重新运行相同的 clustering pipeline，并绘制 degradation curves。这些曲线会根据每种 similarity paradigm 的 invariance assumptions 进行解释。
+
+**Distance derivation for IDK.** Unlike traditional distance measures (ED, DTW, MSM, SBD) that directly produce dissimilarity values, IDK [Ting et al. 2022] is a positive semi-definite kernel yielding similarity scores in [0, 1]. To integrate IDK into our unified k-medoids framework, we convert the kernel into a metric distance using the kernel-induced distance:
+
+```
+d_IDK(x, y) = sqrt(K(x,x) + K(y,y) - 2·K(x,y))
+```
+
+Because IDK feature maps are L2-normalized (i.e., K(x,x) = 1), this simplifies to `sqrt(2 - 2·K(x,y))`. This formulation is mathematically equivalent to the Euclidean distance implicitly computed by CTDS [Gong et al. 2024] when applying KMeans on L2-normalized IDK feature mean maps, ensuring consistency with prior work while adapting to our medoid-based clustering pipeline.
 
 ## Method mechanism table
 
-| Measure | Mechanism | Expected perturbation behavior |
-|---|---|---|
-| ED | Pointwise lock-step alignment | 对 aligned data 快且强；在 shift 下退化。 |
-| DTW | Local elastic warping | 对 local timing changes 更鲁棒；可能 overfit noise。 |
-| MSM | Edit plus warp operations | 通常比 DTW 更稳定；对参数敏感。 |
-| SBD | Normalized cross-correlation with sliding shift | 在 global phase shift 下表现强；在 local warping 下较弱。 |
-| IDK | Distributional kernel over subsequence structure | 可能随序列变长而改善；可能丢失 temporal order。 |
+| Measure | Mechanism                                        | Expected perturbation behavior                            |
+| ------- | ------------------------------------------------ | --------------------------------------------------------- |
+| ED      | Pointwise lock-step alignment                    | 对 aligned data 快且强；在 shift 下退化。                 |
+| DTW     | Local elastic warping                            | 对 local timing changes 更鲁棒；可能 overfit noise。      |
+| MSM     | Edit plus warp operations                        | 通常比 DTW 更稳定；对参数敏感。                           |
+| SBD     | Normalized cross-correlation with sliding shift  | 在 global phase shift 下表现强；在 local warping 下较弱。 |
+| IDK     | Distributional kernel over subsequence structure | 可能随序列变长而改善；可能丢失 temporal order。           |
