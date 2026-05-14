@@ -19,7 +19,7 @@ DATASETS_ROOT = PROJECT_ROOT / "datasets"
 SMOKE_DATASETS = [
     ("SyntheticControl", 60, 6, 8, 4),
     ("CBF", 128, 3, 8, 4),
-    ("ItalyPowerDemand", 24, 2, 10, 5),
+    ("Chinatown", 24, 2, 10, 5),
     ("ECG200", 96, 2, 10, 5),
     ("GunPoint", 150, 2, 10, 5),
 ]
