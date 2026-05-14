@@ -19,7 +19,7 @@ DATASETS_ROOT = PROJECT_ROOT / "datasets"
 SMOKE_DATASETS = [
     ("SyntheticControl", 60, 6, 8, 4),
     ("CBF", 128, 3, 8, 4),
-    ("ItalyPowerDemand", 24, 2, 10, 5),
+    ("Chinatown", 24, 2, 10, 5),
     ("ECG200", 96, 2, 10, 5),
     ("GunPoint", 150, 2, 10, 5),
 ]
@@ -48,7 +48,8 @@ def main() -> None:
             for cid in range(n_classes):
                 for _ in range(n_per_class):
                     series.append(_make_series(length, cid, rng))
-                    labels.append(cid + 1)           # UCR labels are 1-indexed strings
+                    # UCR labels are 1-indexed strings
+                    labels.append(cid + 1)
             path = DATASETS_ROOT / name / f"{name}_{split}.txt"
             write_ucr_file(path, series, labels)
             print(f"  wrote {path}  ({len(labels)} samples)")

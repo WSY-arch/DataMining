@@ -23,13 +23,13 @@
 
 ## 2. Compared Measures
 
-| Paradigm | Measure | Role |
-|---|---|---|
-| Lock-step | ED | Baseline point-to-point distance |
-| Elastic | DTW | Time-axis warping distance |
-| Elastic | MSM | Edit-based elastic distance |
-| Sliding | SBD | Shift-invariant shape distance |
-| Distributional | IDK | Distributional kernel similarity |
+| Paradigm       | Measure | Role                             |
+| -------------- | ------- | -------------------------------- |
+| Lock-step      | ED      | Baseline point-to-point distance |
+| Elastic        | DTW     | Time-axis warping distance       |
+| Elastic        | MSM     | Edit-based elastic distance      |
+| Sliding        | SBD     | Shift-invariant shape distance   |
+| Distributional | IDK     | Distributional kernel similarity |
 
 所有方法最终需要进入统一的 clustering/evaluation pipeline。对于 distance measures，直接产生 pairwise distance matrix；对于 kernel/similarity measures，需要明确 similarity-to-distance 转换或使用等价的统一方案。
 

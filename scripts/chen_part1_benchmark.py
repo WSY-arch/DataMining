@@ -28,12 +28,18 @@ def parse_args() -> argparse.Namespace:
         default="aeon",
         help="Load UCR datasets through aeon auto-download/cache or local TRAIN/TEST files.",
     )
-    parser.add_argument("--data-root", type=str, default=None, help="Dataset root or aeon cache root.")
-    parser.add_argument("--output", type=str, default=str(DEFAULT_RESULTS_ROOT / "part1_results.csv"))
-    parser.add_argument("--datasets", nargs="*", default=[meta.name for meta in SELECTED_DATASETS])
-    parser.add_argument("--metrics", nargs="*", default=["ed", "dtw", "msm"], help="Metrics to run.")
-    parser.add_argument("--samples-per-class", type=int, default=50, help="Balanced cap per class; use 0 for all samples.")
-    parser.add_argument("--seeds", nargs="*", type=int, default=[42], help="Random seeds to repeat for each dataset/metric.")
+    parser.add_argument("--data-root", type=str, default=None,
+                        help="Dataset root or aeon cache root.")
+    parser.add_argument("--output", type=str,
+                        default=str(DEFAULT_RESULTS_ROOT / "part1_results.csv"))
+    parser.add_argument("--datasets", nargs="*",
+                        default=[meta.name for meta in SELECTED_DATASETS])
+    parser.add_argument("--metrics", nargs="*",
+                        default=["ed", "dtw", "msm"], help="Metrics to run.")
+    parser.add_argument("--samples-per-class", type=int, default=50,
+                        help="Balanced cap per class; use 0 for all samples.")
+    parser.add_argument("--seeds", nargs="*", type=int,
+                        default=[42], help="Random seeds to repeat for each dataset/metric.")
     parser.add_argument(
         "--metric-backend",
         choices=["auto", "reference", "aeon", "tslearn"],
@@ -47,7 +53,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if args.data_source == "aeon":
-        data_root = Path(args.data_root) if args.data_root else DEFAULT_AEON_DATA_ROOT
+        data_root = Path(
+            args.data_root) if args.data_root else DEFAULT_AEON_DATA_ROOT
     else:
         data_root = resolve_data_root(args.data_root)
     samples_per_class = None if args.samples_per_class == 0 else args.samples_per_class
@@ -61,7 +68,9 @@ def main() -> int:
     for dataset_name in args.datasets:
         try:
             X, y = load_dataset(dataset_name, args.data_source, data_root)
-            X, y = balanced_subsample(X, y, samples_per_class, args.seeds[0])
+            # fixed subsample; all seeds share same subset
+            subsample_seed = args.seeds[0]
+            X, y = balanced_subsample(X, y, samples_per_class, subsample_seed)
             print(f"[DATASET] {dataset_name}: X={X.shape}, k={len(set(y))}")
             for seed in args.seeds:
                 for metric in args.metrics:
@@ -70,7 +79,8 @@ def main() -> int:
                         y,
                         dataset_name,
                         metric,
-                        seed,
+                        clustering_seed=seed,
+                        subsample_seed=subsample_seed,
                         similarity_params={"backend": args.metric_backend},
                     )
                     rows.append(row)

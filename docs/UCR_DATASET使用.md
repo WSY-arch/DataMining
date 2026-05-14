@@ -1,156 +1,75 @@
-# 使用 UCR 时间序列数据测试聚类
-注：z-normalization前的sampling建议：
-| Dataset             |    N | Length | Size level   | 建议                     |
-| ------------------- | ---: | -----: | ------------ | ------------------------ |
-| Coffee              |   56 |    286 | Small        | 全量跑                   |
-| Beef                |   60 |    470 | Small        | 全量跑                   |
-| FaceFour            |  112 |    350 | Small        | 全量跑                   |
-| ECG200              |  200 |     96 | Small        | 全量跑                   |
-| GunPoint            |  200 |    150 | Small        | 全量跑                   |
-| Trace               |  200 |    275 | Small-Medium | 全量跑                   |
-| Plane               |  210 |    144 | Small        | 全量跑                   |
-| ArrowHead           |  211 |    251 | Small-Medium | 全量跑                   |
-| DiatomSizeReduction |  322 |    345 | Medium       | 尽量全量                 |
-| OSULeaf             |  442 |    427 | Medium       | 尽量全量，慢的话采样     |
-| SyntheticControl    |  600 |     60 | Medium       | 全量或每类采样           |
-| ECGFiveDays         |  884 |    136 | Medium-Large | 先采样，资源够再全量     |
-| CBF                 |  930 |    128 | Medium-Large | 先采样，资源够再全量     |
-| Symbols             | 1020 |    398 | Large        | 建议 stratified sampling |
-| ItalyPowerDemand    | 1096 |     24 | Medium       | 长度短，可尝试全量       |
-| MoteStrain          | 1272 |     84 | Large-ish    | 建议采样或谨慎全量       |
-| Mallat              | 2400 |   1024 | Very Large   | 强烈建议采样             |
-| TwoPatterns         | 5000 |    128 | Very Large   | 强烈建议采样             |
+# UCR 数据使用说明
 
+本项目默认通过 `aeon` 加载 UCR Time Series Archive 数据集。首次运行时，数据会缓存到：
 
 ```text
-正式主实验：
-Small / Small-Medium 全量
-Medium 尽量全量
-Large / Very Large 每类 50 或 100 条 stratified sampling
+datasets/aeon/
 ```
 
+通常不需要手动下载 UCR 压缩包。只有在 aeon 不可用，或需要读取本地 `TRAIN/TEST` 文件时，才使用 `--data-source files`。
 
-## 快速开始
+## 最终 18 个数据集
 
-### 1. 下载 UCR 数据
+|    # | Dataset             | Length |    k |    n | 建议                                        |
+| ---: | ------------------- | -----: | ---: | ---: | ------------------------------------------- |
+|    1 | Chinatown           |     24 |    2 |  365 | 全量；**首选 smoke test**                   |
+|    2 | SyntheticControl    |     60 |    6 |  600 | 全量；备用 smoke test                       |
+|    3 | MoteStrain          |     84 |    2 | 1272 | 全量（length 短，1272² 不慢）               |
+|    4 | ECG200              |     96 |    2 |  200 | 全量                                        |
+|    5 | CBF                 |    128 |    3 |  930 | 全量；**Part 2 perturbation 主力**          |
+|    6 | TwoPatterns         |    128 |    4 | 5000 | **必须 stratified sampling 至每类 200-300** |
+|    7 | ECGFiveDays         |    136 |    2 |  884 | 全量                                        |
+|    8 | Plane               |    144 |    7 |  210 | 全量                                        |
+|    9 | GunPoint            |    150 |    2 |  200 | 全量                                        |
+|   10 | Wine                |    234 |    2 |  111 | 全量                                        |
+|   11 | ArrowHead           |    251 |    3 |  211 | 全量                                        |
+|   12 | Trace               |    275 |    4 |  200 | 全量；**Part 2 perturbation 主力**          |
+|   13 | Coffee              |    286 |    2 |   56 | 全量                                        |
+|   14 | DiatomSizeReduction |    345 |    4 |  322 | 全量                                        |
+|   15 | Symbols             |    398 |    6 | 1020 | **采样至每类 120**，或用 LB_Keogh 加速      |
+|   16 | OSULeaf             |    427 |    6 |  442 | 全量可行（过夜跑）                          |
+|   17 | Computers           |    720 |    2 |  500 | **采样至每类 150**，或只用 train 集         |
+|   18 | ACSF1               |   1460 |   10 |  200 | 全量；记录 runtime（IDK 注意内存）          |
 
-从 [UCR Time Series 官方网站](https://www.cs.ucr.edu/~eamonn/time_series_data_2018/) 下载你想要的数据集。
+## 默认 aeon 模式
 
-**推荐数据集：**
-- **GunPoint** - 易分类，2个类，150个训练样本 + 150个测试样本
-- **ECG200** - 医疗数据，2个类，100个训练样本 + 100个测试样本  
-- **Trace** - 4个类，100个训练样本 + 100个测试样本
-- **FaceAll** - 14个类，560个训练样本 + 1690个测试样本
-
-### 2. 解压数据
-
-下载的文件通常为 ZIP 格式，包含 `*_TRAIN.tsv` 和 `*_TEST.tsv` 两个文件。
-
-解压到项目的 `code/data/` 目录：
+运行 ECG200 smoke test：
 
 ```bash
-cd project/code/data
-# 解压你下载的数据集
-unzip GunPoint.zip
+python scripts/chen_part1_benchmark.py --datasets ECG200 --metrics ed dtw msm --samples-per-class 5 --seeds 1 --metric-backend reference --output scratch/results/ecg200_smoke.csv
 ```
 
-### 3. 运行聚类测试
-
-使用本地 TSV 文件运行聚类：
+运行最终清单中的所有数据集：
 
 ```bash
-cd code
-
-# 基本用法（只用训练数据）
-python tests/test_ucr_clustering.py \
-  --train data/GunPoint_TRAIN.tsv
-
-# 完整用法（训练 + 测试数据合并）
-python tests/test_ucr_clustering.py \
-  --train data/GunPoint_TRAIN.tsv \
-  --test data/GunPoint_TEST.tsv
-
-# 使用子集（100个样本）
-python tests/test_ucr_clustering.py \
-  --train data/GunPoint_TRAIN.tsv \
-  --test data/GunPoint_TEST.tsv \
-  --n-samples 100
-
-# 禁用 Z-score 归一化
-python tests/test_ucr_clustering.py \
-  --train data/GunPoint_TRAIN.tsv \
-  --test data/GunPoint_TEST.tsv \
-  --no-normalize
+python scripts/chen_part1_benchmark.py --samples-per-class 0 --seeds 1 2 3 4 5 6 7 8 9 10 --metric-backend aeon
 ```
 
-## 输出结果
+## 本地文件模式
 
-脚本会生成以下内容：
-
-1. **聚类质量评估指标**：
-   - NMI (Normalized Mutual Information) - 值域 [0, 1]，越高越好
-   - ARI (Adjusted Rand Index) - 值域 [-1, 1]，越高越好
-   - 混淆矩阵 - 显示真实标签 vs 预测标签的对应关系
-
-2. **可视化图表**（保存到 `results/{dataset_name}_viz/`）：
-   - `clustering_results.png` - 各聚类的时间序列可视化
-   - `distance_matrix.png` - 距离矩阵热力图
-   - `medoids_comparison.png` - 各聚类中心的代表序列
-   - `cluster_statistics.png` - 聚类统计信息
-
-## 数据格式说明
-
-UCR 数据使用 TSV (Tab-Separated Values) 格式：
-
-```
-label value1 value2 value3 ... valueN
-0     0.1    0.2    0.3    ... 0.5
-1     0.3    0.4    0.5    ... 0.7
-```
-
-其中：
-- 第一列为类别标签（整数）
-- 后续列为时间序列的各个时间点的值
-
-## 故障排除
-
-### "Train file not found"
-
-检查文件路径是否正确，确保在 `code` 目录下运行脚本。
-
-### "混淆矩阵不完美"
-
-如果 NMI 或 ARI 不是 1.0，可能需要调整聚类参数。编辑 `tests/test_ucr_clustering.py` 中的：
-
-```python
-result = cluster_time_series(
-    X,
-    k=n_clusters,
-    n_trees=200,           # 增加树数量
-    sample_size=256,       # 增加样本大小
-    normalize=normalize,
-    random_state=42,
-)
-```
-
-### 内存不足
-
-如果数据集太大，使用 `--n-samples` 限制样本数量：
+如果需要读取本地 UCR `TRAIN/TEST` 文件，可以使用：
 
 ```bash
-python tests/test_ucr_clustering.py \
-  --train data/FaceAll_TRAIN.tsv \
-  --test data/FaceAll_TEST.tsv \
-  --n-samples 500
+python scripts/chen_part1_benchmark.py --data-source files --data-root datasets --datasets ECG200
 ```
 
-## 下一步：实现不同相似度度量
+本地文件模式的目标是兼容手动下载的数据，不是当前推荐主流程。
 
-一旦验证了基本聚类的效果，可以开始探究不同相似度度量的影响：
+## 注意事项
 
-1. **修改** `tsclust/measures/isolation_kernel.py` 中的 `similarity_matrix()` 方法
-2. **实现**不同的相似度计算方法（Euclidean、DTW、Correlation 等）
-3. **对比**不同相似度度量的聚类质量
-4. **生成**对比报告和可视化
+- `k` 固定为 ground-truth 类别数，用于保证 benchmark 可比性。
+- `y` 只用于计算 ARI/NMI，不参与聚类训练。
+- 小规模采样只用于 smoke test；正式结论应优先来自全量实验。
+- 如果必须采样，应使用 stratified sampling（每类等量抽取），train+test 合并后再采样，固定 random seed（如 42），并在报告中写明原因、样本数和种子。
 
-详见项目README中的"实现其他相似度度量"章节。
+## 运行优先级
+
+**第一批（验证 pipeline，约 1 小时全部跑完）**：Chinatown, SyntheticControl, ECG200, CBF, GunPoint, Wine, ArrowHead, Coffee——全部 length < 300 且规模小。
+
+**第二批（扩展）**：MoteStrain, ECGFiveDays, Plane, Trace, DiatomSizeReduction, OSULeaf。
+
+**第三批（重量级，并行/过夜跑）**：TwoPatterns(采样), Symbols(采样), Computers(采样), ACSF1。
+
+## Part 2 perturbation 推荐数据集
+
+CBF（必选，shape 极清晰）、Trace（必选，合成可控）、ECG200（推荐，真实数据代表）——全量、规模小、跑得快，适合大量扰动 × 多 seed 的密集实验。
