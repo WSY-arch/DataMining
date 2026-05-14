@@ -20,5 +20,8 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# --- 个人计划/草稿（不上传）---
+docs/Week3计划.md
+
 # --- 第三方源码参考（含嵌套 .git）---
 refs/CTDS/
