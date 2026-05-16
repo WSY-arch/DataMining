@@ -103,6 +103,8 @@ def run_sweep(
         for metric in metrics:
             buffer = StringIO()
             with redirect_stdout(buffer):
+                # If running IDK and a global n_samples cap was provided, test_ucr_dataset
+                # will respect that n_samples. The CLI may set this to limit memory.
                 ok, details = test_ucr_dataset(
                     train_file=str(train_file),
                     test_file=str(test_file),
@@ -215,6 +217,8 @@ def main() -> int:
     parser.add_argument("--n-trees", type=int, default=200, help="Number of IDK trees")
     parser.add_argument("--sample-size", type=int, default=256, help="IDK tree sample size")
     parser.add_argument("--no-viz", action="store_true", help="Skip saving visualizations for the best run")
+    parser.add_argument("--idk-max-samples", type=int, default=0, help="When using IDK, subsample to at most this many series to avoid OOM (0 to disable)")
+    parser.add_argument("--idk-sample-size-max", type=int, default=1000, help="Maximum `sample_size` used to build IDK trees (0 to disable)")
     args = parser.parse_args()
 
     dataset_name = args.dataset.strip()
@@ -247,6 +251,12 @@ def main() -> int:
     print(f"Window:  size={effective_window_size}, step={effective_window_step}")
     print("=" * 78)
 
+    # Enforce optional cap on tree sample_size
+    effective_sample_size = args.sample_size
+    if args.idk_sample_size_max and args.idk_sample_size_max > 0 and effective_sample_size > args.idk_sample_size_max:
+        print(f"[INFO] IDK: capping sample_size {effective_sample_size} -> {args.idk_sample_size_max} to limit memory")
+        effective_sample_size = int(args.idk_sample_size_max)
+
     rows = run_sweep(
         train_file=train_file,
         test_file=test_file,
@@ -257,7 +267,7 @@ def main() -> int:
         window_size=effective_window_size,
         window_step=effective_window_step,
         n_trees=args.n_trees,
-        sample_size=args.sample_size,
+        sample_size=effective_sample_size,
     )
 
     best_overall = max(rows, key=lambda row: score_result(row, args.best_by))

@@ -130,15 +130,53 @@ class IsolationKernel:
         self._check_is_fitted()
         X = self._validate_series_matrix(X)
         window_matrix, counts = self._window_batches(X)
-        window_embeddings = self._kernel.iso_kernel_.transform(window_matrix)
 
-        embeddings = []
+        total_windows = int(window_matrix.shape[0])
+        n_series = int(X.shape[0])
+
+        # Build mapping from window index -> series index
+        if total_windows == 0:
+            return np.zeros((n_series, 0), dtype=float)
+
+        window_to_series = np.repeat(np.arange(n_series, dtype=int), counts)
+
+        # Determine embedding dimensionality by transforming a tiny sample.
+        sample_size = min(4, total_windows)
+        sample_emb = self._kernel.iso_kernel_.transform(window_matrix[:sample_size])
+        emb_dim = int(sample_emb.shape[1])
+
+        # Accumulate sums per series without materializing the full window_embeddings.
+        sums = np.zeros((n_series, emb_dim), dtype=float)
+        seen = np.zeros(n_series, dtype=int)
+
+        # Estimate chunk size to keep intermediate distance buffers modest.
+        max_mem_bytes = 200 * 1024 * 1024
+        bytes_per_distance = 8
+        # attempt to get number of centers to refine chunk estimate
+        try:
+            n_centers = int(getattr(self._kernel.iso_kernel_, "center_data").shape[0])
+        except Exception:
+            n_centers = max(1, total_windows)
+
+        est_c = max(1, int(max_mem_bytes / (max(1, n_centers) * bytes_per_distance)))
+        chunk_size = min(total_windows, max(1, est_c))
+
         start = 0
-        for count in counts:
-            series_windows = window_embeddings[start: start + count]
-            embeddings.append(np.asarray(series_windows.mean(axis=0)).ravel())
-            start += count
-        return np.vstack(embeddings)
+        while start < total_windows:
+            end = min(total_windows, start + chunk_size)
+            emb_chunk = self._kernel.iso_kernel_.transform(window_matrix[start:end])
+            for local_idx in range(emb_chunk.shape[0]):
+                global_idx = start + local_idx
+                sidx = int(window_to_series[global_idx])
+                sums[sidx] += emb_chunk[local_idx]
+                seen[sidx] += 1
+            start = end
+
+        # Avoid division by zero for series with no windows (shouldn't happen)
+        seen_safe = seen.copy().astype(float)
+        seen_safe[seen_safe == 0] = 1.0
+        embeddings = sums / seen_safe[:, None]
+        return embeddings
 
     def similarity_matrix(self, X: np.ndarray) -> np.ndarray:
         embeddings = self.transform(X)

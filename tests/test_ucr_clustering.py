@@ -105,6 +105,7 @@ def test_ucr_dataset(
     window_step=None,
     n_trees=200,
     sample_size=256,
+    random_state=42,
     similarity_params=None,
     return_details=False,
 ):
@@ -177,7 +178,7 @@ def test_ucr_dataset(
             n_trees=n_trees,
             sample_size=sample_size,
             normalize=normalize,
-            random_state=42,
+            random_state=random_state,
             window_size=window_size,
             window_step=window_step,
             similarity_metric=similarity_metric,
