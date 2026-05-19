@@ -253,6 +253,7 @@ def run_one(
     idk_window_step: int,
     idk_n_trees: int,
     idk_sample_size: int,
+    idk_no_window_threshold: int,
     sbd_backend: str,
     sbd_n_jobs: int,
     sbd_candidate_k: int,
@@ -287,6 +288,7 @@ def run_one(
             similarity_metric=metric,
             window_size=window_size,
             window_step=window_step,
+            no_window_threshold=idk_no_window_threshold,
             n_trees=n_trees,
             sample_size=sample_size,
             random_state=int(seed),
@@ -314,6 +316,7 @@ def rerun_best_with_visualization(
     idk_window_step: int,
     idk_n_trees: int,
     idk_sample_size: int,
+    idk_no_window_threshold: int,
     sbd_backend: str,
     sbd_n_jobs: int,
     sbd_candidate_k: int,
@@ -355,6 +358,7 @@ def rerun_best_with_visualization(
             similarity_metric=metric,
             window_size=window_size,
             window_step=window_step,
+            no_window_threshold=idk_no_window_threshold,
             n_trees=n_trees,
             sample_size=sample_size,
             random_state=seed,
@@ -516,7 +520,7 @@ def main() -> int:
 
     if args.idk_no_window_threshold and int(preview_X.shape[1]) <= int(args.idk_no_window_threshold):
         print(
-            f"[INFO] IDK: disabling sliding windows for short series (length={int(preview_X.shape[1])} <= threshold={int(args.idk_no_window_threshold)})"
+            f"[INFO] IDK: using direct raw-series path for short series (length={int(preview_X.shape[1])} <= threshold={int(args.idk_no_window_threshold)})"
         )
 
     # Option B: enforce an upper bound on IDK's sample_size to limit memory.
@@ -583,6 +587,7 @@ def main() -> int:
                     idk_window_step=idk_window_step,
                     idk_n_trees=idk_n_trees,
                     idk_sample_size=idk_sample_size,
+                    idk_no_window_threshold=args.idk_no_window_threshold,
                     sbd_backend=args.sbd_backend,
                     sbd_n_jobs=args.sbd_n_jobs,
                     sbd_candidate_k=args.sbd_candidate_k,
@@ -611,6 +616,7 @@ def main() -> int:
                         idk_window_step=idk_window_step,
                         idk_n_trees=idk_n_trees,
                         idk_sample_size=idk_sample_size,
+                        idk_no_window_threshold=args.idk_no_window_threshold,
                         sbd_backend=args.sbd_backend,
                         sbd_n_jobs=args.sbd_n_jobs,
                         sbd_candidate_k=args.sbd_candidate_k,
@@ -673,11 +679,12 @@ def main() -> int:
                 idk_window_step=idk_window_step,
                 idk_n_trees=idk_n_trees,
                 idk_sample_size=idk_sample_size,
+                idk_no_window_threshold=args.idk_no_window_threshold,
                 sbd_backend=args.sbd_backend,
-                    sbd_n_jobs=args.sbd_n_jobs,
-                    sbd_candidate_k=args.sbd_candidate_k,
-                    sbd_coarse_method=args.sbd_coarse_method,
-                    sbd_paa_segments=args.sbd_paa_segments,
+                sbd_n_jobs=args.sbd_n_jobs,
+                sbd_candidate_k=args.sbd_candidate_k,
+                sbd_coarse_method=args.sbd_coarse_method,
+                sbd_paa_segments=args.sbd_paa_segments,
             )
             best_viz_dirs[metric] = viz_dir
             best_by_metric[metric] = details

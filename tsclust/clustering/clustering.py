@@ -39,6 +39,7 @@ def cluster_time_series(
     random_state: Optional[int] = None,
     window_size: Optional[int] = None,
     window_step: Optional[int] = None,
+    no_window_threshold: int = 0,
     similarity_metric: str = "idk",
     similarity_params: Optional[dict] = None,
 ) -> ClusteringResult:
@@ -66,9 +67,10 @@ def cluster_time_series(
             method=ik_method,
             window_size=window_size,
             window_step=window_step,
+            no_window_threshold=no_window_threshold,
         ).fit(X)
         sim = kernel.similarity_matrix(X)
-        dist = 1.0 - sim
+        dist = kernel.distance_matrix(X)
     elif similarity_metric in {"euclidean", "euclid", "ed"}:
         dist = euclidean_distance_matrix(X)
         sim = distance_to_similarity(dist)

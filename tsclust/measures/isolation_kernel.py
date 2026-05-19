@@ -16,6 +16,7 @@ class IsolationKernel:
         method: str = "anne",
         window_size: Optional[int] = None,
         window_step: Optional[int] = None,
+        no_window_threshold: int = 0,
     ) -> None:
         self.n_trees = int(n_trees)
         self.sample_size = int(sample_size)
@@ -23,6 +24,7 @@ class IsolationKernel:
         self.method = method
         self.window_size = window_size
         self.window_step = window_step
+        self.no_window_threshold = max(0, int(no_window_threshold))
 
     def _check_dependency(self) -> None:
         return None
@@ -89,20 +91,28 @@ class IsolationKernel:
         self._check_dependency()
         X = self._validate_series_matrix(X)
 
+        self.series_length_ = X.shape[1]
+        self._use_direct_series_ = self.no_window_threshold > 0 and self.series_length_ <= self.no_window_threshold
+
         # fit window size and step
         # window_size_: The actual window size to be used for extracting windows from the time series.
         # window_step_: The actual step size to be used for sliding the window across the time series.
-        if self.window_size is None:
-            self.window_size_ = min(10, X.shape[1])
+        if self._use_direct_series_:
+            self.window_size_ = self.series_length_
+            self.window_step_ = self.series_length_
+            window_matrix = X
         else:
-            self.window_size_ = max(1, min(int(self.window_size), X.shape[1]))
+            if self.window_size is None:
+                self.window_size_ = min(10, X.shape[1])
+            else:
+                self.window_size_ = max(1, min(int(self.window_size), X.shape[1]))
 
-        if self.window_step is None:
-            self.window_step_ = 1
-        else:
-            self.window_step_ = max(1, int(self.window_step))
+            if self.window_step is None:
+                self.window_step_ = 1
+            else:
+                self.window_step_ = max(1, int(self.window_step))
 
-        window_matrix, _ = self._window_batches(X)
+            window_matrix, _ = self._window_batches(X)
 
         # Fit the IsoDisKernel model using the extracted windows
         # .kernel: The fitted IsoDisKernel model that will be used for
@@ -113,7 +123,6 @@ class IsolationKernel:
             max_samples=self.sample_size,  # type: ignore[arg-type]
             random_state=self.random_state,
         ).fit(window_matrix)  # type: ignore[arg-type]
-        self.series_length_ = X.shape[1]
         return self
 
     def _check_is_fitted(self) -> None:
@@ -129,6 +138,13 @@ class IsolationKernel:
     def transform(self, X: np.ndarray) -> np.ndarray:
         self._check_is_fitted()
         X = self._validate_series_matrix(X)
+
+        if getattr(self, "_use_direct_series_", False):
+            embeddings = self._kernel.iso_kernel_.transform(X)
+            if hasattr(embeddings, "toarray"):
+                embeddings = embeddings.toarray()
+            return np.asarray(embeddings, dtype=float)
+
         window_matrix, counts = self._window_batches(X)
 
         total_windows = int(window_matrix.shape[0])
@@ -187,9 +203,8 @@ class IsolationKernel:
         # normalize embeddings to unit length
         normalized_embeddings = embeddings / norms
         # calculate similarity matrix
-        sim = normalized_embeddings @ normalized_embeddings.T
-        # clip values to [0, 1] range
-        return np.clip(sim, 0.0, 1.0)
+        return normalized_embeddings @ normalized_embeddings.T
 
     def distance_matrix(self, X: np.ndarray) -> np.ndarray:
-        return 1.0 - self.similarity_matrix(X)
+        sim = self.similarity_matrix(X)
+        return np.sqrt(np.maximum(0.0, 2.0 - 2.0 * sim))

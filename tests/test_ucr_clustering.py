@@ -103,6 +103,7 @@ def test_ucr_dataset(
     similarity_metric="idk",
     window_size=None,
     window_step=None,
+    no_window_threshold=0,
     n_trees=200,
     sample_size=256,
     random_state=42,
@@ -181,6 +182,7 @@ def test_ucr_dataset(
             random_state=random_state,
             window_size=window_size,
             window_step=window_step,
+            no_window_threshold=no_window_threshold,
             similarity_metric=similarity_metric,
             similarity_params=similarity_params,
         )
