@@ -127,7 +127,8 @@ def derive_window_params(
     """Choose conservative sliding-window params based on series length.
 
     Recommendation: window_size in [0.05*T, 0.2*T], window_step in [w/4, w/2].
-    We pick the central value ~0.1*T and step ~w/4, then clamp to sensible bounds.
+    We keep the window size conservative, but use a smaller stride (about w/4)
+    to preserve more local alignment information for higher quality embeddings.
     """
     T = int(series_length)
 
@@ -141,10 +142,9 @@ def derive_window_params(
         w = int(window_size)
         w = max(1, min(w, T))
 
-    # Default step: use a larger stride (w/2) to reduce overlapping windows
-    # which can otherwise explode the number of windows and memory use.
+    # Default step: use a smaller stride (w/4) for better coverage / quality.
     if window_step is None:
-        step = max(1, int(max(1, w // 2)))
+        step = max(1, int(max(1, w // 4)))
     else:
         step = int(window_step)
         step = max(1, min(step, w))
@@ -175,6 +175,7 @@ def derive_idk_params(
     window_step: int | None,
     n_trees: int | None,
     sample_size: int | None,
+    no_window_threshold: int = 0,
 ) -> tuple[int, int, int, int, str]:
     """Return effective IDK params using preset, overridden by explicit args."""
     preset = preset.lower().strip()
@@ -184,34 +185,40 @@ def derive_idk_params(
 
     effective_preset = preset
     if preset == "auto":
-        if n_samples >= 300 or series_length >= 800:
-            effective_preset = "fast"
+        if n_samples >= 1000 or series_length >= 500:
+            effective_preset = "balanced"
         elif n_samples <= 120 and series_length <= 300:
             effective_preset = "accurate"
         else:
             effective_preset = "balanced"
 
     if effective_preset == "fast":
-        base_window_size = max(10, min(series_length // 5, 80))
-        base_window_step = max(2, base_window_size // 2)
-        base_n_trees = 80
-        base_sample_size = 128
-    elif effective_preset == "accurate":
-        base_window_size = max(10, min(series_length // 8, 50))
-        base_window_step = max(1, base_window_size // 3)
-        base_n_trees = 220
+        base_window_size = max(12, min(series_length // 8, 64))
+        base_window_step = max(1, base_window_size // 4)
+        base_n_trees = 120
         base_sample_size = 256
+    elif effective_preset == "accurate":
+        base_window_size = max(16, min(series_length // 5, 80))
+        base_window_step = max(1, base_window_size // 4)
+        base_n_trees = 220
+        base_sample_size = 384
     else:  # balanced
-        base_window_size = max(10, min(series_length // 6, 60))
-        base_window_step = max(1, base_window_size // 2)
-        base_n_trees = 140
-        base_sample_size = 160
+        base_window_size = max(12, min(series_length // 6, 72))
+        base_window_step = max(1, base_window_size // 4)
+        base_n_trees = 160
+        base_sample_size = 256
 
     effective_window_size = int(window_size) if window_size is not None else int(base_window_size)
     effective_window_size = max(1, min(effective_window_size, series_length))
 
     effective_window_step = int(window_step) if window_step is not None else int(base_window_step)
     effective_window_step = max(1, effective_window_step)
+
+    # For short series, skip sliding windows entirely and use the full series
+    # as a single window.
+    if int(no_window_threshold) > 0 and series_length <= int(no_window_threshold):
+        effective_window_size = int(series_length)
+        effective_window_step = int(series_length)
 
     effective_n_trees = int(n_trees) if n_trees is not None else int(base_n_trees)
     effective_n_trees = max(10, effective_n_trees)
@@ -458,6 +465,7 @@ def main() -> int:
     parser.add_argument("--window-step", type=int, default=None, help="IDK sliding window step (override preset)")
     parser.add_argument("--n-trees", type=int, default=None, help="IDK number of trees (override preset)")
     parser.add_argument("--sample-size", type=int, default=None, help="IDK tree sample size (override preset)")
+    parser.add_argument("--idk-no-window-threshold", type=int, default=0, help="If series length is at most this value, disable IDK sliding windows by using the full series as one window (0 to disable)")
 
     parser.add_argument("--sbd-backend", type=str, default="auto", choices=["auto", "approx", "candidate", "pruned", "aeon", "reference"], help="SBD backend")
     parser.add_argument("--sbd-n-jobs", type=int, default=-1, help="Parallel jobs for aeon SBD backend (-1 uses all cores)")
@@ -503,7 +511,13 @@ def main() -> int:
         window_step=effective_window_step,
         n_trees=args.n_trees,
         sample_size=args.sample_size,
+        no_window_threshold=args.idk_no_window_threshold,
     )
+
+    if args.idk_no_window_threshold and int(preview_X.shape[1]) <= int(args.idk_no_window_threshold):
+        print(
+            f"[INFO] IDK: disabling sliding windows for short series (length={int(preview_X.shape[1])} <= threshold={int(args.idk_no_window_threshold)})"
+        )
 
     # Option B: enforce an upper bound on IDK's sample_size to limit memory.
     if args.idk_sample_size_max and args.idk_sample_size_max > 0:
