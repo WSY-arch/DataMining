@@ -59,7 +59,7 @@ All randomness is centralized through a single top-level `numpy.random.Generator
 - Cuturi & Blondel, *Soft-DTW* (ICML 2017): independent shifts per instance in the alignment robustness study.
 - Forestier et al., *Generating synthetic time series* (DAMI 2017): per-instance temporal jitter as the standard misalignment protocol.
 
-**Storage convention.** Each perturbed dataset cell saves `shift_amounts.npy` alongside the perturbed series array. Storing only the seed is insufficient — recovering the exact shift values from a seed requires re-simulating the entire RNG draw order, which is brittle if the code path changes.
+**Storage convention.** Each perturbed dataset cell persists `shift_amounts` as an `(n,) int64` array inside the per-cell `.npz` file (see Open Item 2 schema). Storing only the seed is insufficient — recovering the exact shift values from a seed requires re-simulating the entire RNG draw order, which is brittle if the code path changes.
 
 **Methodology text (English).**
 > *Misalignment was introduced by shifting each series independently by an integer amount $s_i \sim \mathrm{Uniform}\{-S, +S\}$. Max-shift $S$ was swept over values corresponding to $\{0\%, 5\%, 10\%, 20\%, 30\%\}$ of each dataset's series length, with $0\%$ serving as the within-experiment unperturbed control and $30\%$ chosen as the upper bound: beyond this fraction (e.g.\ $40\%$ on ECG200, $\approx 38$ samples on $L=96$) the QRS complex would be displaced past the analysis window, so the experiment would no longer measure misalignment but rather signal truncation, functionally overlapping with the length perturbation of Choice~5 and confounding the ablation. Per-instance shifts are required because a globally uniform shift leaves all pairwise Euclidean distances invariant and therefore fails to constitute a meaningful perturbation.*
@@ -142,13 +142,13 @@ Zero-padding is forbidden. Single-end truncation is forbidden.
 
 ## Summary table for the paper
 
-| Aspect | Decision | Key rationale |
-|---|---|---|
-| Noise magnitude | Relative σ = `level × per-series std` | Cross-dataset amplitude varies ~10⁴; absolute σ conflates noise with scale |
-| RNG | `default_rng` (PCG64) + `SeedSequence.spawn` | Bit-exact cross-platform reproducibility; eliminates global-state bugs |
-| Shift application | Per-series independent uniform integer | Global uniform shift leaves pairwise ED invariant — degenerate for ED baseline |
-| Shift boundary | `edge` padding default; `circular` ablation; `zero` excluded | Circular default would trivialize SBD (intrinsic invariance); ablation reports this as a finding |
-| Length | Two-sided truncate + FFT resample to original $L$; floor 2 | Truncate-only avoids the step-edge confound; FFT resample preserves spectral content |
+| Aspect            | Decision                                                     | Key rationale                                                                                    |
+| ----------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Noise magnitude   | Relative σ = `level × per-series std`                        | Cross-dataset amplitude varies ~10⁴; absolute σ conflates noise with scale                       |
+| RNG               | `default_rng` (PCG64) + `SeedSequence.spawn`                 | Bit-exact cross-platform reproducibility; eliminates global-state bugs                           |
+| Shift application | Per-series independent uniform integer                       | Global uniform shift leaves pairwise ED invariant — degenerate for ED baseline                   |
+| Shift boundary    | `edge` padding default; `circular` ablation; `zero` excluded | Circular default would trivialize SBD (intrinsic invariance); ablation reports this as a finding |
+| Length            | Two-sided truncate + FFT resample to original $L$; floor 2   | Truncate-only avoids the step-edge confound; FFT resample preserves spectral content             |
 
 ---
 
@@ -162,28 +162,28 @@ Zero-padding is forbidden. Single-end truncation is forbidden.
 
    **Top-level npz arrays:**
 
-   | Field | Type | Always present | Description |
-   |---|---|---|---|
-   | `X` | `(n, L) float64` | yes | Perturbed series (z-normalized prior to perturbation). |
-   | `y` | `(n,) int` | yes | Class labels, row-aligned with `X`. |
-   | `params` | `object` (json string) | yes | Serialized parameter dict, see below. |
-   | `shift_amounts` | `(n,) int64` | shift cells only | Realized integer shift applied to each series. |
+   | Field           | Type                   | Always present   | Description                                            |
+   | --------------- | ---------------------- | ---------------- | ------------------------------------------------------ |
+   | `X`             | `(n, L) float64`       | yes              | Perturbed series (z-normalized prior to perturbation). |
+   | `y`             | `(n,) int`             | yes              | Class labels, row-aligned with `X`.                    |
+   | `params`        | `object` (json string) | yes              | Serialized parameter dict, see below.                  |
+   | `shift_amounts` | `(n,) int64`           | shift cells only | Realized integer shift applied to each series.         |
 
    **`params` JSON fields:**
 
-   | Field | Type | Notes |
-   |---|---|---|
-   | `perturbation_type` | `"noise"` / `"shift"` / `"length"` | |
-   | `perturbation_level` | float | Cross-dataset comparable level: noise→ℓ, shift→pct, length→f. |
-   | `seed` | int | RNG seed for noise/shift; `null` for length (deterministic). |
-   | `shift_mode` | `"padding"` / `"circular"` / `null` | shift cells only. |
-   | `shift_pct` | float / null | Shift as percentage of L (shift cells only). |
-   | `shift_abs` | int / null | Shift as absolute samples (shift cells only). |
-   | `dataset` | str | Dataset name (self-describing even if file is moved). |
-   | `series_length` | int | L; sanity-check against `X.shape[1]`. |
-   | `n_sampled` | int | n; sanity-check against `X.shape[0]`. |
-   | `n_classes` | int | k; lets the reader call k-medoids without recomputing `len(set(y))`. |
-   | `pipeline_version` | str | `"2026-05-21-spec"` (git-traceability tag). |
+   | Field                | Type                                | Notes                                                                |
+   | -------------------- | ----------------------------------- | -------------------------------------------------------------------- |
+   | `perturbation_type`  | `"noise"` / `"shift"` / `"length"`  |                                                                      |
+   | `perturbation_level` | float                               | Cross-dataset comparable level: noise→ℓ, shift→pct, length→f.        |
+   | `seed`               | int                                 | RNG seed for noise/shift; `null` for length (deterministic).         |
+   | `shift_mode`         | `"padding"` / `"circular"` / `null` | shift cells only.                                                    |
+   | `shift_pct`          | float / null                        | Shift as percentage of L (shift cells only).                         |
+   | `shift_abs`          | int / null                          | Shift as absolute samples (shift cells only).                        |
+   | `dataset`            | str                                 | Dataset name (self-describing even if file is moved).                |
+   | `series_length`      | int                                 | L; sanity-check against `X.shape[1]`.                                |
+   | `n_sampled`          | int                                 | n; sanity-check against `X.shape[0]`.                                |
+   | `n_classes`          | int                                 | k; lets the reader call k-medoids without recomputing `len(set(y))`. |
+   | `pipeline_version`   | str                                 | `"2026-05-21-spec"` (git-traceability tag).                          |
 
    **Filename convention:**
 
@@ -199,11 +199,71 @@ Zero-padding is forbidden. Single-end truncation is forbidden.
 
 ## Implementation sync log
 
-| Date | Item | Status |
-|---|---|---|
-| 2026-05-21 | All five Choices reflected in `tsclust/perturbations.py`; `random_global_shift` default flipped to `padding`; `truncate_and_resample` switched to two-sided symmetric truncation; `random_global_shift` now returns `(shifted, shift_amounts)`; `tests/test_perturbations.py` regenerated GOLDEN, 14/14 PASS. | ✅ in sync |
-| 2026-05-21 | `scripts/chen_part2_perturbations.py` `--shift-mode` default flipped to `padding`; per-cell `.npz` dump added (X, y, shift_amounts, params) under `results/_perturbed_cells/{dataset}/` for Wang's SBD/IDK reads. | ✅ in sync |
-| 2026-05-21 | `docs/工作记录.md` §16.2 ·16.4 updated to reflect the flip and the Wang invariance-test contract. | ✅ in sync |
-| 2026-05-21 | Sweep grids finalized in Methodology text: noise $\{0.0, 0.1, 0.2, 0.4, 0.8\}$, shift $\{0, 5, 10, 20, 30\}\%$ of $L$, length $\{1.0, 0.9, 0.75, 0.5, 0.25\}$. Open items 1–3 collapsed; rationale for dropping noise 0.05 and shift 40% recorded inline. | ✅ doc-only |
-| 2026-05-21 | `scripts/chen_part2_perturbations.py` CLI migrated from absolute `--shift-levels` to relative `--shift-pct`; per-dataset `abs_shift = round(pct * L / 100)`; per-cell `.npz` metadata now stores both `shift_pct` and `shift_abs`; `--length-fractions` default updated to `[1.0, 0.9, 0.75, 0.5, 0.25]`. | ✅ in sync |
-| 2026-05-21 | Open items 1–2 finalized: `clustering_seed = 1..10` (Open#1); per-cell `params` schema locked with full field table (Open#2). `chen_part2_perturbations.py --seeds` default updated to `1..10`; `_dump_cell` now persists `dataset`, `series_length`, `n_sampled`, `n_classes` so cells are self-describing. | ✅ in sync |
+| Date       | Item                                                                                                                                                                                                                                                                                                          | Status     |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 2026-05-21 | All five Choices reflected in `tsclust/perturbations.py`; `random_global_shift` default flipped to `padding`; `truncate_and_resample` switched to two-sided symmetric truncation; `random_global_shift` now returns `(shifted, shift_amounts)`; `tests/test_perturbations.py` regenerated GOLDEN, 14/14 PASS. | ✅ in sync  |
+| 2026-05-21 | `scripts/chen_part2_perturbations.py` `--shift-mode` default flipped to `padding`; per-cell `.npz` dump added (X, y, shift_amounts, params) under `results/_perturbed_cells/{dataset}/` for Wang's SBD/IDK reads.                                                                                             | ✅ in sync  |
+| 2026-05-21 | `docs/工作记录.md` §16.2 ·16.4 updated to reflect the flip and the Wang invariance-test contract.                                                                                                                                                                                                             | ✅ in sync  |
+| 2026-05-21 | Sweep grids finalized in Methodology text: noise $\{0.0, 0.1, 0.2, 0.4, 0.8\}$, shift $\{0, 5, 10, 20, 30\}\%$ of $L$, length $\{1.0, 0.9, 0.75, 0.5, 0.25\}$. Open items 1–3 collapsed; rationale for dropping noise 0.05 and shift 40% recorded inline.                                                     | ✅ doc-only |
+| 2026-05-21 | `scripts/chen_part2_perturbations.py` CLI migrated from absolute `--shift-levels` to relative `--shift-pct`; per-dataset `abs_shift = round(pct * L / 100)`; per-cell `.npz` metadata now stores both `shift_pct` and `shift_abs`; `--length-fractions` default updated to `[1.0, 0.9, 0.75, 0.5, 0.25]`.     | ✅ in sync  |
+| 2026-05-21 | Open items 1–2 finalized: `clustering_seed = 1..10` (Open#1); per-cell `params` schema locked with full field table (Open#2). `chen_part2_perturbations.py --seeds` default updated to `1..10`; `_dump_cell` now persists `dataset`, `series_length`, `n_sampled`, `n_classes` so cells are self-describing.  | ✅ in sync  |
+
+---
+
+## Wang 端 Part 2 操作指南
+
+### 数据源：`results/_perturbed_cells/`
+
+Chen 已将 Part 2 所有扰动后的时间序列以 `.npz` 格式转储到 git 仓库的 `results/_perturbed_cells/` 目录，目录结构如下：
+
+```
+results/_perturbed_cells/
+├── CBF/           # 15 个 .npz 文件 (noise×5 + shift×5 + length×5)
+├── Trace/          # 15 个 .npz 文件
+└── ECG200/         # 15 个 .npz 文件
+```
+
+总计 45 个文件，约 9 MB。Wang 通过 `git pull origin feature/chen-week3` 即可获取。
+
+### 读取方式（代码示例）
+
+```python
+import numpy as np
+import json
+from pathlib import Path
+
+cells_root = Path("results/_perturbed_cells")
+
+for dataset_dir in sorted(cells_root.iterdir()):
+    for npz_path in sorted(dataset_dir.glob("*.npz")):
+        data = np.load(npz_path, allow_pickle=True)
+        X = data["X"]                # (n_sampled, series_length) float64
+        y = data["y"]                # (n_sampled,) int
+        params = json.loads(str(data["params"]))  # 元数据 dict
+
+        # shift 单元额外包含 shift_amounts
+        if "shift_amounts" in data:
+            shift_amounts = data["shift_amounts"]  # (n_sampled,) int64
+
+        # 从 params 中提取关键信息
+        k = params["n_classes"]                    # 直接用作 k-medoids 的 k
+        perturbation_type = params["perturbation_type"]
+        perturbation_level = params["perturbation_level"]
+```
+
+### Wang 的完整流程
+
+1. **拉取数据**：`git pull origin feature/chen-week3`
+2. **前置验证：SBD 循环平移不变性测试**：必须先通过（见 Choice 4 合约），不通过则后续实验无效
+3. **遍历每个 .npz 文件**：读取 `X`, `y`, `params`
+4. **计算 SBD/IDK 距离矩阵**：形状 `(n_sampled, n_sampled)`，满足协作方法.md §3 距离矩阵规范
+5. **跑 k-medoids**：`k = params["n_classes"]`，`clustering_seed = 1..10`（每个 cell 跑10次）
+6. **输出 CSV**：按 v2 schema 16 字段写一行（参考协作方法.md §2）
+
+### 注意事项
+
+- **不需要重跑扰动**：所有扰动已由 Chen 统一生成，Wang 只需读取 npz 中的 `X` 并计算 SBD/IDK 距离矩阵
+- **每个 npz 文件跑 10 seeds**：即每个 cell 产生 10 行 CSV（clustering_seed=1..10）
+- **总计行数**：45 cells × 2 measures × 10 seeds = 900 行
+- **subsample_seed 填 42**：因为 npz 中的数据已经是子采样后的结果
+- **文件名即元数据**：例如 `noise_l0.2_s42.npz` 表示 noise level=0.2，seed=42（该 seed 用于生成扰动，与 clustering_seed 无关）
