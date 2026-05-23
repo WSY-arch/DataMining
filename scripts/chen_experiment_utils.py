@@ -78,6 +78,9 @@ MEASURE_PARADIGMS = {
 }
 
 
+# Unified collaboration schema (16 fields, agreed with Wang 2026-05).
+# - subsample_seed is fixed to 42 across all measures and seeds.
+# - measure_params / clustering_params are JSON-encoded hyperparameter dumps.
 RESULT_FIELDS = [
     "dataset",
     "measure",
@@ -85,17 +88,16 @@ RESULT_FIELDS = [
     "ari",
     "nmi",
     "runtime",
-    "runtime_distance_matrix",
-    "runtime_clustering",
     "subsample_seed",
     "clustering_seed",
     "perturbation_type",
     "perturbation_level",
-    "n_samples",
+    "n_original",
+    "n_sampled",
     "series_length",
     "k",
-    "n_classes_predicted",
     "measure_params",
+    "clustering_params",
 ]
 
 
@@ -337,6 +339,7 @@ def run_single_measure(
     perturbation_type: str = "none",
     perturbation_level: str = "0",
     similarity_params: dict | None = None,
+    n_original: int | None = None,
 ) -> dict[str, object]:
     import json
     from tsclust.clustering.clustering import _zscore_normalize
@@ -398,8 +401,14 @@ def run_single_measure(
     runtime_clust = time.perf_counter() - t1
 
     runtime_total = runtime_dist + runtime_clust
-    n_classes_predicted = int(len(np.unique(labels)))
 
+    clustering_params = {
+        "init": "random",
+        "max_iter": 300,
+        "method": "alternate",
+    }
+
+    n_sampled = int(X.shape[0])
     return {
         "dataset": dataset_name,
         "measure": canonical_measure,
@@ -407,17 +416,16 @@ def run_single_measure(
         "ari": adjusted_rand_score(y, labels),
         "nmi": normalized_mutual_info_score(y, labels),
         "runtime": runtime_total,
-        "runtime_distance_matrix": runtime_dist,
-        "runtime_clustering": runtime_clust,
         "subsample_seed": subsample_seed,
         "clustering_seed": clustering_seed,
         "perturbation_type": perturbation_type,
         "perturbation_level": perturbation_level,
-        "n_samples": int(X.shape[0]),
+        "n_original": int(n_original) if n_original is not None else n_sampled,
+        "n_sampled": n_sampled,
         "series_length": int(X.shape[1]),
         "k": k,
-        "n_classes_predicted": n_classes_predicted,
         "measure_params": json.dumps(params_record) if params_record else "",
+        "clustering_params": json.dumps(clustering_params),
     }
 
 
@@ -429,3 +437,44 @@ def write_result_rows(rows: Iterable[dict[str, object]], output_path: Path) -> N
         for row in rows:
             writer.writerow({field: row.get(field, "")
                             for field in RESULT_FIELDS})
+
+
+def append_result_row(row: dict[str, object], output_path: Path) -> None:
+    """Append a single row to CSV; write header if file is new.
+
+    Used for incremental writing so a crash mid-batch does not lose progress.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not output_path.exists()
+    mode = "w" if write_header else "a"
+    with output_path.open(mode, newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=RESULT_FIELDS)
+        if write_header:
+            writer.writeheader()
+        writer.writerow({field: row.get(field, "")
+                        for field in RESULT_FIELDS})
+
+
+def load_done_keys(
+    output_path: Path,
+    perturbation_type: str = "none",
+) -> set[tuple[str, str, str, str]]:
+    """Load (dataset, measure, perturbation_level, clustering_seed) keys already in CSV.
+
+    Returns empty set if file does not exist.
+    """
+    if not output_path.exists():
+        return set()
+    done: set[tuple[str, str, str, str]] = set()
+    with output_path.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            if row.get("perturbation_type", "none") != perturbation_type:
+                continue
+            done.add((
+                str(row.get("dataset", "")),
+                str(row.get("measure", "")),
+                str(row.get("perturbation_level", "0")),
+                str(row.get("clustering_seed", "")),
+            ))
+    return done
