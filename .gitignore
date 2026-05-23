@@ -2,8 +2,9 @@
 data/
 datasets/
 
-# --- 实验结果（本地保留，不上传）---
-results/
+# --- 实验结果（默认不上传，白名单共享 npz cells 给 Wang）---
+results/*
+!results/_perturbed_cells/
 scratch/results/
 
 # --- Python 缓存 ---
