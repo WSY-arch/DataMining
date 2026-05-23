@@ -91,6 +91,20 @@ def load_ucr_from_file(train_file, test_file=None):
     return X, y
 
 
+def _balanced_subsample(X: np.ndarray, y: np.ndarray, samples_per_class: int, seed: int) -> tuple[np.ndarray, np.ndarray]:
+    if samples_per_class <= 0:
+        return X, y
+    rng = np.random.default_rng(seed)
+    selected: list[int] = []
+    for label in np.unique(y):
+        label_idx = np.where(y == label)[0]
+        n_take = min(int(samples_per_class), len(label_idx))
+        selected.extend(rng.choice(label_idx, size=n_take, replace=False).tolist())
+    selected_array = np.array(selected, dtype=int)
+    rng.shuffle(selected_array)
+    return X[selected_array], y[selected_array]
+
+
 def test_ucr_dataset(
     train_file,
     test_file=None,
@@ -104,6 +118,7 @@ def test_ucr_dataset(
     window_size=None,
     window_step=None,
     no_window_threshold=0,
+    samples_per_class=None,
     n_trees=200,
     sample_size=256,
     random_state=42,
@@ -145,8 +160,12 @@ def test_ucr_dataset(
         print(f"[FAIL] Could not load dataset: {e}")
         return False
 
+    if samples_per_class is not None and int(samples_per_class) > 0:
+        X, y_true = _balanced_subsample(X, y_true, int(samples_per_class), 42)
+        print(f"[INFO] Using balanced subsample: {int(samples_per_class)} per class")
+
     # Use subset if requested
-    if n_samples and n_samples < len(X):
+    if (samples_per_class is None or int(samples_per_class) <= 0) and n_samples and n_samples < len(X):
         rng = np.random.default_rng(42)
         indices = rng.choice(len(X), n_samples, replace=False)
         X = X[indices]
@@ -159,6 +178,11 @@ def test_ucr_dataset(
     classes, counts = np.unique(y_true, return_counts=True)
     print(
         f"       Class distribution: {dict(zip(classes.tolist(), counts.tolist()))}")
+    direct_idk_mode = (
+        similarity_metric.lower().strip() == "idk"
+        and int(no_window_threshold) > 0
+        and X.shape[1] <= int(no_window_threshold)
+    )
 
     # Determine number of clusters
     if k is None:
@@ -189,10 +213,13 @@ def test_ucr_dataset(
         print(f"[OK] Clustering completed")
         print(f"     Predicted labels: {np.unique(result.labels)}")
         print(f"     Similarity metric: {similarity_metric}")
-        if window_size is not None:
-            print(f"     Window size: {window_size}")
-        if window_step is not None:
-            print(f"     Window step: {window_step}")
+        if direct_idk_mode:
+            print(f"     IDK mode: direct raw-series path")
+        else:
+            if window_size is not None:
+                print(f"     Window size: {window_size}")
+            if window_step is not None:
+                print(f"     Window step: {window_step}")
     except Exception as e:
         print(f"[FAIL] Clustering failed: {e}")
         import traceback

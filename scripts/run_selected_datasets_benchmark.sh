@@ -2,7 +2,7 @@
 set -u
 
 # Batch runner for collaboration benchmark mode.
-# It calls scripts/run_ucr_sbd_idk_compare.py for the datasets listed in docs/数据集选择.md.
+# It calls scripts/run_ucr_sbd_idk_compare.py for the datasets listed in datasets_choosed.csv.
 #
 # Usage examples:
 #   bash scripts/run_selected_datasets_benchmark.sh --seeds 1 2 3 --no-viz
@@ -12,26 +12,23 @@ set -u
 # - The script forces --mode benchmark.
 # - All extra args are passed through to run_ucr_sbd_idk_compare.py.
 
-DATASETS=(
-  SyntheticControl
-  CBF
-  ItalyPowerDemand
-  MoteStrain
-  ECG200
-  ECGFiveDays
-  GunPoint
-  Plane
-  TwoPatterns
-  Trace
-  ArrowHead
-  Coffee
-  DiatomSizeReduction
-  FaceFour
-  Symbols
-  OSULeaf
-  Beef
-  Mallat
-)
+DATASET_CSV=""
+DATASETS=()
+declare -A DATASET_LENGTHS=()
+
+read_dataset_csv() {
+  local csv_path="$1"
+  while IFS=, read -r dataset length k || [[ -n "${dataset:-}" ]]; do
+    dataset="${dataset%$'\r'}"
+    length="${length%$'\r'}"
+    k="${k%$'\r'}"
+    if [[ "$dataset" == "Dataset" || -z "$dataset" ]]; then
+      continue
+    fi
+    DATASETS+=("$dataset")
+    DATASET_LENGTHS["$dataset"]="$length"
+  done < "$csv_path"
+}
 
 QUICK=0
 STOP_ON_ERROR=0
@@ -54,28 +51,52 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$QUICK" -eq 1 ]]; then
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DATASET_CSV="$PROJECT_ROOT/datasets_choosed.csv"
+
+if [[ -f "$DATASET_CSV" ]]; then
+  read_dataset_csv "$DATASET_CSV"
+else
   DATASETS=(
-    SyntheticControl
-    CBF
-    TwoPatterns
-    ItalyPowerDemand
-    MoteStrain
-    ECG200
-    ECGFiveDays
-    GunPoint
+    Chinatown,
+    SyntheticControl,
+    MoteStrain,
+    ECG200,
+    CBF,
+    TwoPatterns,
+    ECGFiveDays,
+    Plane,
+    GunPoint,
+    Wine,
+    ArrowHead,
+    Trace,
+    Coffee,
+    DiatomSizeReduction,
+    Symbols,
+    OSULeaf,
+    Computers,
+    ACSF1
   )
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [[ "$QUICK" -eq 1 ]]; then
+  DATASETS=("${DATASETS[@]:0:8}")
+fi
 PY_SCRIPT="$PROJECT_ROOT/scripts/run_ucr_sbd_idk_compare.py"
+PYTHON_EXE="$PROJECT_ROOT/.venv/Scripts/python.exe"
 RESULTS_ROOT="$PROJECT_ROOT/results/auto_ucr"
 MERGED_CSV="$RESULTS_ROOT/collaboration_results_sbd_idk_all.csv"
 
 if [[ ! -f "$PY_SCRIPT" ]]; then
   echo "[ERROR] Missing script: $PY_SCRIPT"
   exit 1
+fi
+
+if [[ -f "$PYTHON_EXE" ]]; then
+  PYTHON_CMD=("$PYTHON_EXE")
+else
+  PYTHON_CMD=(python)
 fi
 
 echo "============================================================"
@@ -91,13 +112,50 @@ FAILED=()
 SUCCEEDED=()
 
 for dataset in "${DATASETS[@]}"; do
+  length="${DATASET_LENGTHS[$dataset]:-0}"
+  samples_per_class=0
+  case "$dataset" in
+    TwoPatterns)
+      samples_per_class=300
+      ;;
+    Symbols)
+      samples_per_class=120
+      ;;
+    Computers)
+      samples_per_class=150
+      ;;
+  esac
+
+  idk_threshold=0
+  if [[ "$length" -gt 0 && "$length" -le 96 ]]; then
+    idk_threshold=96
+  fi
+
   echo
 echo "[RUN] Dataset: $dataset"
   echo "------------------------------------------------------------"
 
   (
     cd "$PROJECT_ROOT" || exit 2
-    python "$PY_SCRIPT" "$dataset" --mode benchmark "${EXTRA_ARGS[@]}"
+    run_args=(
+      "$PY_SCRIPT"
+      "$dataset"
+      --mode benchmark
+      --seeds 1 2 3 4 5 6 7 8 9 10
+      --no-viz
+      --sbd-backend reference
+      --idk-preset accurate
+      --idk-no-window-threshold "$idk_threshold"
+      --idk-sample-size-max 0
+      --idk-max-samples 0
+    )
+    if [[ "$samples_per_class" -gt 0 ]]; then
+      run_args+=(--samples-per-class "$samples_per_class")
+    fi
+    if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
+      run_args+=("${EXTRA_ARGS[@]}")
+    fi
+    "${PYTHON_CMD[@]}" "${run_args[@]}"
   )
   status=$?
 

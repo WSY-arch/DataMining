@@ -26,7 +26,7 @@ import warnings
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Mapping, Tuple
 
 import numpy as np
 
@@ -63,6 +63,8 @@ RESULT_FIELDS = [
     "dataset",
     "measure",
     "paradigm",
+    "measure_params",
+    "clustering_params",
     "ari",
     "nmi",
     "runtime",
@@ -94,6 +96,10 @@ def score_result(result: Dict[str, float], mode: str) -> float:
     if mode == "ari":
         return float(result["ari"])
     return float(result["nmi"] + result["ari"])
+
+
+def dump_params(payload: Mapping[str, object]) -> str:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
 def derive_k_values(
@@ -254,6 +260,7 @@ def run_one(
     idk_n_trees: int,
     idk_sample_size: int,
     idk_no_window_threshold: int,
+    samples_per_class: int | None,
     sbd_backend: str,
     sbd_n_jobs: int,
     sbd_candidate_k: int,
@@ -275,6 +282,32 @@ def run_one(
     window_step = idk_window_step if metric == "idk" else None
     n_trees = idk_n_trees if metric == "idk" else 50
     sample_size = idk_sample_size if metric == "idk" else 32
+    if metric == "sbd":
+        measure_params = {
+            "backend": sbd_backend,
+            "n_jobs": sbd_n_jobs,
+            "standardize": not normalize,
+            "candidate_k": sbd_candidate_k,
+            "coarse_method": sbd_coarse_method,
+            "paa_segments": sbd_paa_segments,
+        }
+    else:
+        measure_params = {
+            "psi": idk_sample_size,
+            "t": idk_n_trees,
+            "window_size": idk_window_size,
+            "window_step": idk_window_step,
+            "no_window_threshold": idk_no_window_threshold,
+        }
+
+    clustering_params = {
+        "k": int(k),
+        "normalize": bool(normalize),
+        "random_state": int(seed),
+        "n_samples": None if n_samples is None else int(n_samples),
+        "samples_per_class": None if samples_per_class is None else int(samples_per_class),
+        "no_window_threshold": int(idk_no_window_threshold),
+    }
 
     buffer = StringIO()
     with redirect_stdout(buffer):
@@ -289,6 +322,7 @@ def run_one(
             window_size=window_size,
             window_step=window_step,
             no_window_threshold=idk_no_window_threshold,
+            samples_per_class=samples_per_class,
             n_trees=n_trees,
             sample_size=sample_size,
             random_state=int(seed),
@@ -302,6 +336,8 @@ def run_one(
     details["k"] = int(k)
     details["seed"] = int(seed)
     details["score"] = float(details["nmi"] + details["ari"])
+    details["measure_params"] = dump_params(measure_params)
+    details["clustering_params"] = dump_params(clustering_params)
     return details
 
 
@@ -317,6 +353,7 @@ def rerun_best_with_visualization(
     idk_n_trees: int,
     idk_sample_size: int,
     idk_no_window_threshold: int,
+    samples_per_class: int | None,
     sbd_backend: str,
     sbd_n_jobs: int,
     sbd_candidate_k: int,
@@ -359,6 +396,7 @@ def rerun_best_with_visualization(
             window_size=window_size,
             window_step=window_step,
             no_window_threshold=idk_no_window_threshold,
+            samples_per_class=samples_per_class,
             n_trees=n_trees,
             sample_size=sample_size,
             random_state=seed,
@@ -371,6 +409,33 @@ def rerun_best_with_visualization(
 
     details = dict(details)
     details.update({"metric": metric, "seed": seed, "k": k, "score": float(best_row["score"])})
+    if "measure_params" not in details:
+        if metric == "sbd":
+            details["measure_params"] = dump_params({
+                "backend": sbd_backend,
+                "n_jobs": sbd_n_jobs,
+                "standardize": not normalize,
+                "candidate_k": sbd_candidate_k,
+                "coarse_method": sbd_coarse_method,
+                "paa_segments": sbd_paa_segments,
+            })
+        else:
+            details["measure_params"] = dump_params({
+                "psi": idk_sample_size,
+                "t": idk_n_trees,
+                "window_size": idk_window_size,
+                "window_step": idk_window_step,
+                "no_window_threshold": idk_no_window_threshold,
+            })
+    if "clustering_params" not in details:
+        details["clustering_params"] = dump_params({
+            "k": k,
+            "normalize": bool(normalize),
+            "random_state": seed,
+            "n_samples": None if n_samples is None else int(n_samples),
+            "samples_per_class": None if samples_per_class is None else int(samples_per_class),
+            "no_window_threshold": int(idk_no_window_threshold),
+        })
     return viz_dir, details
 
 
@@ -380,6 +445,8 @@ def write_detailed_csv(rows: List[Dict[str, float]], csv_path: Path) -> None:
         "metric",
         "seed",
         "k",
+        "measure_params",
+        "clustering_params",
         "nmi",
         "ari",
         "score",
@@ -400,6 +467,8 @@ def to_collaboration_row(dataset: str, row: Dict[str, float]) -> Dict[str, objec
         "dataset": dataset,
         "measure": metric,
         "paradigm": MEASURE_PARADIGMS[metric],
+        "measure_params": row.get("measure_params", ""),
+        "clustering_params": row.get("clustering_params", ""),
         "ari": float(row["ari"]),
         "nmi": float(row["nmi"]),
         "runtime": float(row["runtime_sec"]),
@@ -461,6 +530,7 @@ def main() -> int:
     parser.add_argument("--best-by", type=str, choices=["composite", "nmi", "ari"], default="composite", help="Ranking rule when selecting best k in explore mode")
 
     parser.add_argument("--n-samples", type=int, default=None, help="Optional sample limit")
+    parser.add_argument("--samples-per-class", type=int, default=None, help="Optional per-class sampling cap for balanced subsampling")
     parser.add_argument("--no-normalize", action="store_true", help="Disable z-score normalization")
     parser.add_argument("--no-viz", action="store_true", help="Skip best-run visualization rerun")
 
@@ -489,7 +559,10 @@ def main() -> int:
     train_file, test_file = resolve_ucr_files(dataset_name, data_root)
     preview_X, y_preview = load_ucr_from_file(str(train_file), str(test_file))
 
-    if args.n_samples is not None and args.n_samples > 0:
+    if args.samples_per_class is not None and args.samples_per_class > 0:
+        _, class_counts = np.unique(y_preview, return_counts=True)
+        effective_n_samples = int(np.sum(np.minimum(class_counts, int(args.samples_per_class))))
+    elif args.n_samples is not None and args.n_samples > 0:
         effective_n_samples = min(int(args.n_samples), int(preview_X.shape[0]))
     else:
         effective_n_samples = int(preview_X.shape[0])
@@ -504,7 +577,7 @@ def main() -> int:
         window_size=args.window_size,
         window_step=args.window_step,
         n_series=effective_n_samples,
-        max_total_windows=50000,
+        max_total_windows=250000,
     )
 
     idk_window_size, idk_window_step, idk_n_trees, idk_sample_size, effective_idk_preset = derive_idk_params(
@@ -518,10 +591,9 @@ def main() -> int:
         no_window_threshold=args.idk_no_window_threshold,
     )
 
-    if args.idk_no_window_threshold and int(preview_X.shape[1]) <= int(args.idk_no_window_threshold):
-        print(
-            f"[INFO] IDK: using direct raw-series path for short series (length={int(preview_X.shape[1])} <= threshold={int(args.idk_no_window_threshold)})"
-        )
+    use_direct_raw_series = bool(
+        args.idk_no_window_threshold and int(preview_X.shape[1]) <= int(args.idk_no_window_threshold)
+    )
 
     # Option B: enforce an upper bound on IDK's sample_size to limit memory.
     if args.idk_sample_size_max and args.idk_sample_size_max > 0:
@@ -555,10 +627,25 @@ def main() -> int:
     print(f"k range: {effective_k_min}..{effective_k_max}")
     print(f"Metrics: {', '.join(metrics)}")
     print(f"IDK preset: {args.idk_preset} -> {effective_idk_preset}")
-    print(
-        f"IDK params: window_size={idk_window_size}, window_step={idk_window_step}, "
-        f"n_trees={idk_n_trees}, sample_size={idk_sample_size}"
-    )
+    if use_direct_raw_series:
+        print(
+            f"IDK mode: direct raw-series path (length={int(preview_X.shape[1])} <= threshold={int(args.idk_no_window_threshold)})"
+        )
+        print(f"IDK params: n_trees={idk_n_trees}, sample_size={idk_sample_size}")
+    else:
+        print(
+            f"IDK mode: sliding-window path (window_size={idk_window_size}, window_step={idk_window_step})"
+        )
+        print(
+            f"IDK params: window_size={idk_window_size}, window_step={idk_window_step}, "
+            f"n_trees={idk_n_trees}, sample_size={idk_sample_size}"
+        )
+    if args.samples_per_class is not None and args.samples_per_class > 0:
+        print(f"Sampling: balanced {args.samples_per_class} per class (effective_n_samples={effective_n_samples})")
+    elif args.n_samples is not None and args.n_samples > 0:
+        print(f"Sampling: uniform n_samples={effective_n_samples}")
+    else:
+        print("Sampling: full dataset")
     print(f"SBD backend: {args.sbd_backend}")
     print("=" * 88)
 
@@ -588,6 +675,7 @@ def main() -> int:
                     idk_n_trees=idk_n_trees,
                     idk_sample_size=idk_sample_size,
                     idk_no_window_threshold=args.idk_no_window_threshold,
+                    samples_per_class=args.samples_per_class,
                     sbd_backend=args.sbd_backend,
                     sbd_n_jobs=args.sbd_n_jobs,
                     sbd_candidate_k=args.sbd_candidate_k,
@@ -617,6 +705,7 @@ def main() -> int:
                         idk_n_trees=idk_n_trees,
                         idk_sample_size=idk_sample_size,
                         idk_no_window_threshold=args.idk_no_window_threshold,
+                        samples_per_class=args.samples_per_class,
                         sbd_backend=args.sbd_backend,
                         sbd_n_jobs=args.sbd_n_jobs,
                         sbd_candidate_k=args.sbd_candidate_k,
@@ -680,6 +769,7 @@ def main() -> int:
                 idk_n_trees=idk_n_trees,
                 idk_sample_size=idk_sample_size,
                 idk_no_window_threshold=args.idk_no_window_threshold,
+                samples_per_class=args.samples_per_class,
                 sbd_backend=args.sbd_backend,
                 sbd_n_jobs=args.sbd_n_jobs,
                 sbd_candidate_k=args.sbd_candidate_k,
