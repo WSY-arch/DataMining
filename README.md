@@ -1,292 +1,164 @@
-# tsclust：Isolation Kernel + K-Medoids 单变量时间序列聚类
+# Time-Series Clustering Similarity Benchmark
 
-本项目用于课程实验：在同一聚类算法（K-Medoids）下，对比不同相似度度量（IDK / ED / DTW / MSM 等）对聚类效果的影响。
+本项目用于比较不同时间序列相似性度量在无监督聚类任务中的表现，并分析它们在噪声、时间错位和长度变化下的机制差异。
 
-## 1. 项目结构
+核心思想是：不同 similarity measures 编码了不同的 invariance。Euclidean Distance 强调逐点对齐，DTW/MSM 允许弹性时间轴匹配，SBD 强调全局 shift invariance，IDK 则从 distributional kernel 的角度比较时间序列。本项目关注的不是寻找一个永远最优的方法，而是解释不同方法在什么数据条件下更合适。
+
+## 1. Project Scope
+
+本项目聚焦于：
+
+1. 单变量 whole time-series clustering。
+2. UCR Time Series Archive 中的代表性数据集。
+3. 统一聚类框架下的相似性度量比较。
+4. 噪声、temporal shift 和 sequence length 的受控扰动实验。
+5. ARI、NMI、runtime、平均排名和统计检验。
+
+本项目不覆盖：
+
+1. deep learning-based clustering。
+2. multivariate time series。
+3. supervised classification。
+4. feature-based 或 model-based representations。
+
+## 2. Compared Measures
+
+| Paradigm       | Measure | Role                             |
+| -------------- | ------- | -------------------------------- |
+| Lock-step      | ED      | Baseline point-to-point distance |
+| Elastic        | DTW     | Time-axis warping distance       |
+| Elastic        | MSM     | Edit-based elastic distance      |
+| Sliding        | SBD     | Shift-invariant shape distance   |
+| Distributional | IDK     | Distributional kernel similarity |
+
+所有方法最终需要进入统一的 clustering/evaluation pipeline。对于 distance measures，直接产生 pairwise distance matrix；对于 kernel/similarity measures，需要明确 similarity-to-distance 转换或使用等价的统一方案。
+
+## 3. Repository Structure
 
 ```text
-code/
-├── tsclust/                        # 项目核心包
-│   ├── measures/                   # 相似性 / 距离度量
-│   │   ├── isolation_kernel.py     # IDK 相似度实现
-│   │   └── similarity_measures.py  # ED / DTW / MSM
-│   ├── clustering/                 # 聚类算法 + 统一入口
-│   │   ├── k_medoids.py            # K-Medoids(PAM)
-│   │   └── clustering.py           # cluster_time_series() dispatch
-│   └── visualization/              # 可视化工具
-│       └── visualization.py
-├── tests/
-│   ├── test_clustering.py          # 合成数据测试
-│   ├── test_similarity_measures.py # DTW/MSM 基本性质
-│   └── test_ucr_clustering.py      # UCR 数据测试 + 指标对比
-├── scripts/                        # 实验脚本（chen_*、run_*）
-├── datasets/                       # aeon / 本地 UCR 数据缓存，不上传 Git
-├── results/
+.
+├── tsclust/                    # Core package
+│   ├── measures/               # ED / DTW / MSM / IDK-related measures
+│   ├── clustering/             # k-medoids and clustering dispatch
+│   └── visualization/          # Plotting helpers
+├── scripts/                    # Benchmark, perturbation, and analysis scripts
+├── tests/                      # Unit and smoke tests
+├── docs/                       # Project notes, collaboration protocol, report drafts
+├── refs/                       # Proposal and reference materials
+├── scratch/                    # Local smoke-test helpers; not formal results
+├── datasets/                   # Local data cache, ignored by Git
+├── results/                    # Local experiment outputs, ignored by Git
 └── requirements.txt
 ```
 
-## 2. 环境与安装
+## 4. Installation
 
-### 2.1. 环境配置
-
-**Python 版本要求：Python 3.11（至少 3.10，因为代码使用 `X | Y` PEP 604 联合类型语法）。**
-
-建议使用项目本地虚拟环境 .venv，并与协作者统一到同一 Python 版本，避免随机数流/数值精度跨版本漂移。
+Python 3.10+ is recommended.
 
 ```bash
-cd <repo-root>
-
-# 创建虚拟环境（首次）
 python -m venv .venv
+```
 
-# Windows Git Bash
+On Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+On Git Bash or Linux/macOS:
+
+```bash
 source .venv/Scripts/activate
+```
 
-# 安装依赖
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
 ```
 
-如果你已在 .venv 中，可以直接执行下面所有命令。
-
-### 2.2. UCR 数据入口
-
-Chen 侧实验脚本默认使用 `aeon` 加载 UCR Time Series Archive 数据集，不需要手动下载完整 UCR 压缩包。首次运行时，数据会自动缓存到：
+The benchmark scripts use `aeon` as the default UCR data interface. Downloaded datasets are cached locally under:
 
 ```text
 datasets/aeon/
 ```
 
-默认数据入口示例：
+The `datasets/` and `results/` directories are ignored by Git because they may contain large local files.
+
+## 5. Quick Smoke Test
+
+Run a small ECG200 smoke test with ED, DTW, and MSM:
 
 ```bash
 python scripts/chen_part1_benchmark.py --datasets ECG200 --metrics ed dtw msm --samples-per-class 5 --seeds 1 --metric-backend reference --output scratch/results/ecg200_smoke.csv
 ```
 
-正式实验建议显式指定 aeon backend：
+This checks that the data loader, distance computation, k-medoids pipeline, and result writer are connected. The output is only for smoke testing and should not be interpreted as a formal benchmark result.
+
+Run the core similarity-measure tests:
+
+```bash
+python -m pytest tests/test_similarity_measures.py -q
+```
+
+## 6. Main Benchmark Workflow
+
+Part 1 runs the real-data UCR benchmark (10 seeds for `mean ± std` reporting):
 
 ```bash
 python scripts/chen_part1_benchmark.py --samples-per-class 0 --seeds 1 2 3 4 5 6 7 8 9 10 --metric-backend aeon
 ```
 
-只有在需要读取本地 UCR `TRAIN/TEST` 文件时，才使用文件模式：
+A single-seed run can be used as a faster sanity check:
 
 ```bash
-python scripts/chen_part1_benchmark.py --data-source files --data-root datasets --datasets ECG200
+python scripts/chen_part1_benchmark.py --samples-per-class 0 --seeds 1 --metric-backend aeon
 ```
 
-### 2.3. Chen 侧协作入口
-
-Week 3 之后，Chen/Wang 协作以统一数据接口、统一结果 schema 和统一 benchmark pipeline 为核心。相关文档：
-
-- `docs/CHEN_QUICKSTART.md`
-- `docs/协作方法.md`
-- `docs/数据集选择.md`
-- `docs/待完善.md`
-- `docs/chen_report_sections.md`
-
-## 3. 测试脚本用法
-
-### 3.1 合成数据基础测试
+Part 2 runs controlled perturbation experiments:
 
 ```bash
-python tests/test_clustering.py
+python scripts/chen_part2_perturbations.py --samples-per-class 50 --metric-backend aeon
 ```
 
-### 3.2 UCR 数据单次测试（test_ucr_clustering.py）
+Once per-measure results are concatenated into a single CSV, aggregate seed-level scores and compute rankings:
 
 ```bash
-python tests/test_ucr_clustering.py --train <TRAIN文件> --test <TEST文件> [可选参数]
+python scripts/chen_analyze_results.py --input <combined_results.csv> --score-field ari
+python scripts/chen_analyze_results.py --input <combined_results.csv> --score-field nmi
 ```
 
-示例：
+## 7. Shared Result Schema
 
-```bash
-python tests/test_ucr_clustering.py \
-  --train data/Univariate_arff/ACSF1/ACSF1_TRAIN.txt \
-  --test data/Univariate_arff/ACSF1/ACSF1_TEST.txt \
-  --k 10 --no-viz
+Every benchmark run should write one row per dataset, measure, seed, and perturbation level:
+
+```text
+dataset,measure,paradigm,ari,nmi,runtime,seed,perturbation_type,perturbation_level,n_samples,series_length,k
 ```
 
-### 3.3 IDK vs Euclidean 对比测试
+This schema is used to keep ED, DTW, MSM, SBD, and IDK comparable under the same evaluation framework.
 
-```bash
-python tests/test_ucr_clustering.py \
-  --train data/Univariate_arff/ACSF1/ACSF1_TRAIN.txt \
-  --test data/Univariate_arff/ACSF1/ACSF1_TEST.txt \
-  --k 10 --no-viz --compare-metrics
-```
+## 8. Reproducibility Notes
 
-`scripts/run_ucr_unsupervised_compare.py`提供了简便的对比方式，可以自动选择较为合适的参数。
+1. Use the same selected UCR datasets for all compared measures.
+2. Use the same preprocessing and normalization settings.
+3. Set `k` to the ground-truth number of classes for benchmark comparability.
+4. Run multiple seeds for k-medoids and report mean/std when possible.
+5. Use the same backend setting when comparing runtime.
+6. Treat small sampled runs as smoke tests, not formal evidence.
 
-```bash
-python scripts/run_ucr_unsupervised_compare.py \
-ACSF1 --k-min 2 --k-max 6 [no-viz]
-```
+## 9. Documentation
 
+Additional project notes are maintained under `docs/`, including dataset selection rationale and a list of known implementation limitations. Internal working notes and draft report sections also live there but are not part of the public interface.
 
-说明：
-- compare 模式会连续跑两次：idk 与 euclidean。
-- 末尾会输出汇总表：NMI、ARI、Runtime 以及差值 ΔNMI/ΔARI。
+## 10. Current Status
 
-### 3.4 大序列数据的稳定参数（避免 IDK 内存爆炸）
+The current implementation provides a shared k-medoids pipeline, aeon-based UCR loading, ED/DTW/MSM benchmark runs, controlled perturbation experiments, and result aggregation utilities. SBD and IDK integrations are in progress and will be released alongside the corresponding result tables.
 
-对于 ACSF1 这类长度较大的序列，推荐显式设置窗口参数：
+## 11. Acknowledgments
 
-```bash
-python tests/test_ucr_clustering.py \
-  --train data/Univariate_arff/ACSF1/ACSF1_TRAIN.txt \
-  --test data/Univariate_arff/ACSF1/ACSF1_TEST.txt \
-  --k 10 --no-viz --compare-metrics \
-  --window-size 200 --window-step 50 \
-  --n-trees 100 --sample-size 128
-```
+This project uses the [UCR Time Series Classification Archive](https://www.timeseriesclassification.com/) for benchmark data, accessed via the [`aeon`](https://www.aeon-toolkit.org/) toolkit. Please cite the UCR Archive (Dau et al., 2018) and aeon (Middlehurst et al., 2024) when using this codebase.
 
-## 4. test_ucr_clustering.py 参数说明
+## 12. License
 
-| 参数                | 说明                                     | 默认值 |
-| ------------------- | ---------------------------------------- | ------ |
-| --train             | 训练文件路径（必填）                     | 无     |
-| --test              | 测试文件路径（可选）                     | None   |
-| --k                 | 聚类数；不填则使用真实类别数（监督模式） | None   |
-| --no-normalize      | 关闭 z-score 标准化                      | False  |
-| --no-viz            | 跳过可视化（加速）                       | False  |
-| --similarity-metric | 单次测试所用度量：idk 或 euclidean       | idk    |
-| --compare-metrics   | 开启 idk 与 euclidean 对比模式           | False  |
-| --window-size       | IDK 滑窗长度                             | None   |
-| --window-step       | IDK 滑窗步长                             | None   |
-| --n-trees           | IDK 树数量                               | 200    |
-| --sample-size       | IDK 每棵树采样数                         | 256    |
-| --n-samples         | 随机抽样样本数（用于快速实验）           | None   |
-
-## 5. 输出与结果
-
-- 单次测试输出：
-  - NMI
-  - ARI
-  - 混淆矩阵
-  - 每个簇的样本数和簇内平均距离
-- 对比模式额外输出：
-  - idk / euclidean 的并列表
-  - ΔNMI、ΔARI、ΔTime
-- 可视化输出目录：
-  - results/<数据集名>_idk_viz
-  - results/<数据集名>_euclidean_viz
-
-## 6. Python API 最小示例
-
-```python
-import numpy as np
-from tsclust.clustering import cluster_time_series
-
-X = np.random.randn(50, 100)
-
-result = cluster_time_series(
-    X,
-    k=3,
-    similarity_metric="idk",  # 或 "euclidean"
-    n_trees=200,
-    sample_size=256,
-    normalize=True,
-    random_state=42,
-)
-
-print(result.medoids)
-print(result.labels)
-```
-
-## 7. 常见问题
-
-1) 运行时报 NumPy / sklearn / scipy 版本冲突
-- 现象：提示 compiled using NumPy 1.x cannot run in NumPy 2.x
-- 处理：在 .venv 中重新安装兼容版本（建议使用 requirements.txt）
-
-2) IDK 内存占用过高
-- 处理：增大 window-size、增大 window-step，或减小 n-trees / sample-size
-- 推荐起点：window-size=200, window-step=50, n-trees=100, sample-size=128
-
-## 8. 备注
-
-本 README 仅保留当前代码已实现且可直接运行的流程，已删除历史版本中不再使用或与现有脚本不一致的说明。
-
-## 9. 扩展：如何添加其它距离/相似度度量（例如 DTW、MSM）
-
-当你想比较更多时间序列距离度量（例如 DTW、MSM、LB_Keogh、Shape-Based Distance 等），建议按下面步骤将新度量集成到项目中：
-
-1) 安装所需依赖（示例）
-
-```bash
-# 推荐的库：
-# - dtaidistance: 高效的 DTW 实现
-# - tslearn: 提供 DTW、MSM、KShape 等时间序列方法
-pip install dtaidistance tslearn
-```
-
-2) 在 `tsclust/clustering/clustering.py` 中添加 dispatch 分支
-
-示例（伪代码）：
-
-```python
-from dtaidistance import dtw
-from tslearn.metrics import cdist_dtw
-
-if similarity_metric == "dtw":
-  # 计算成距离矩阵（示例：使用 tslearn 的 cdist_dtw）
-  dist = cdist_dtw(X)
-  sim = 1.0 / (1.0 + dist)
-elif similarity_metric == "msm":
-  # tslearn 中可能没有直接 MSM 实现，或使用自定义实现
-  dist = custom_msm_distance_matrix(X, **similarity_params)
-  sim = 1.0 / (1.0 + dist)
-```
-
-3) 如果度量需要预处理（例如 DTW 常处理不同长度的序列或需要归一化），请在 `cluster_time_series()` 中的 `normalize` 或在度量分支里显式处理。
-
-4) 写入包装函数与测试用例
-
-- 在 `tests/test_ucr_clustering.py` 的 CLI 中，`--similarity-metric` 已支持传入字符串。添加新度量后，可以直接通过命令行调用：
-
-```bash
-python tests/test_ucr_clustering.py --train <TRAIN> --test <TEST> --similarity-metric dtw --k 3
-```
-
-- 为新度量写一个单元测试（例如 `tests/test_metrics.py`），验证计算的距离矩阵满足对称性、对角为 0 等属性。
-
-5) 运行基准并记录结果
-
-- 使用已有的 `scripts/run_ucr_unsupervised_compare.py` 做批量对比（脚本会自动调用 `test_ucr_clustering.py`），例如：
-
-```bash
-python scripts/run_ucr_unsupervised_compare.py BeetleFly --k-min 2 --k-max 6
-```
-
-6) 性能与加速建议
-
-- DTW 等度量计算成本高，建议：
-  - 在 sweep 前使用 `--n-samples` 做抽样测试
-  - 使用向量化或 C/Numba 实现的库（如 `dtaidistance` 的 C 绑定）
-  - 并行计算距离矩阵（注意内存）
-
-7) 参数和可复现性
-
-- 将所有重要参数（度量名、window_size、window_step、n_trees、sample_size、随机种子）写入输出 `summary.json`，便于复现实验。
-
-8) 示例：集成 DTW（详细示例）
-
-在 `tsclust/clustering/clustering.py` 的 `cluster_time_series()` 中添加：
-
-```python
-elif similarity_metric == "dtw":
-  # 使用 tslearn 计算序列间 DTW 距离（需要先 pip install tslearn）
-  from tslearn.metrics import cdist_dtw
-
-  # X 的 shape 为 (n_samples, series_length)
-  dist = cdist_dtw(X)
-  sim = 1.0 / (1.0 + dist)
-```
-
-注意：对于变长序列，先用 `np.nan` 填充到相同长度或使用 tslearn 的工具将序列包装为 `TimeSeries`。一般来说直接用等长数据集即可。
-
-9) 将新度量记录到 README
-
-在添加新度量后，更新本 README 的第 3 节或第 5 节，给出使用示例（如上）。
-
+This project is released under the MIT License. See [`LICENSE`](LICENSE) for details.

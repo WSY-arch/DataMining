@@ -29,42 +29,42 @@ class DatasetMeta:
 
 
 SELECTED_DATASETS: tuple[DatasetMeta, ...] = (
+    DatasetMeta("Chinatown", 24, 2, 363, "Traffic",
+                "Very short traffic series; useful lower length bound."),
     DatasetMeta("SyntheticControl", 60, 6, 600, "Synthetic",
                 "Classic controlled shapes with trend and shift-like classes."),
-    DatasetMeta("CBF", 128, 3, 930, "Synthetic",
-                "Cylinder-Bell-Funnel motifs; strong shape separation."),
-    DatasetMeta("TwoPatterns", 128, 4, 5000, "Synthetic",
-                "Four synthetic patterns with timing variation."),
-    DatasetMeta("ItalyPowerDemand", 24, 2, 1096, "Sensor",
-                "Very short energy-demand series for lower length bound."),
     DatasetMeta("MoteStrain", 84, 2, 1272, "Sensor",
                 "Short IoT sensor series with real measurement variation."),
     DatasetMeta("ECG200", 96, 2, 200, "Medical",
                 "Canonical ECG binary dataset."),
+    DatasetMeta("CBF", 128, 3, 930, "Synthetic",
+                "Cylinder-Bell-Funnel motifs; strong shape separation."),
+    DatasetMeta("TwoPatterns", 128, 4, 5000, "Synthetic",
+                "Four synthetic patterns with timing variation."),
     DatasetMeta("ECGFiveDays", 136, 2, 884, "Medical",
                 "ECG across days with likely phase variation."),
-    DatasetMeta("GunPoint", 150, 2, 200, "Motion",
-                "Classic motion-capture benchmark with mild warping."),
     DatasetMeta("Plane", 144, 7, 210, "Sensor",
                 "Multi-class radar-return shapes."),
-    DatasetMeta("Trace", 275, 4, 200, "Synthetic",
-                "Process-control shapes; good perturbation candidate."),
+    DatasetMeta("GunPoint", 150, 2, 200, "Motion",
+                "Classic motion-capture benchmark with mild warping."),
+    DatasetMeta("Wine", 234, 2, 111, "Spectroscopy",
+                "Small spectroscopy dataset with medium-length series."),
     DatasetMeta("ArrowHead", 251, 3, 211, "Shape",
                 "Object outline series with shape-based classes."),
+    DatasetMeta("Trace", 275, 4, 200, "Synthetic",
+                "Process-control shapes; good perturbation candidate."),
     DatasetMeta("Coffee", 286, 2, 56, "Spectroscopy",
                 "Small spectroscopy dataset; non-temporal shape signal."),
     DatasetMeta("DiatomSizeReduction", 345, 4, 322, "Image",
                 "Image-outline classes with clear morphology."),
-    DatasetMeta("FaceFour", 350, 4, 112, "Image",
-                "Small face-outline projection dataset."),
     DatasetMeta("Symbols", 398, 6, 1020, "Shape",
                 "Handwritten symbol outlines with six classes."),
     DatasetMeta("OSULeaf", 427, 6, 442, "Shape",
                 "Leaf outlines; longer multi-class shape benchmark."),
-    DatasetMeta("Beef", 470, 5, 60, "Spectroscopy",
-                "Small long spectroscopy dataset."),
-    DatasetMeta("Mallat", 1024, 8, 2400, "Synthetic",
-                "Long synthetic benchmark for upper length bound."),
+    DatasetMeta("Computers", 720, 2, 500, "Device",
+                "Longer binary device-use series."),
+    DatasetMeta("ACSF1", 1460, 10, 200, "Device",
+                "Very long multi-class appliance-control series."),
 )
 
 
@@ -78,6 +78,9 @@ MEASURE_PARADIGMS = {
 }
 
 
+# Unified collaboration schema (16 fields, agreed with Wang 2026-05).
+# - subsample_seed is fixed to 42 across all measures and seeds.
+# - measure_params / clustering_params are JSON-encoded hyperparameter dumps.
 RESULT_FIELDS = [
     "dataset",
     "measure",
@@ -85,12 +88,16 @@ RESULT_FIELDS = [
     "ari",
     "nmi",
     "runtime",
-    "seed",
+    "subsample_seed",
+    "clustering_seed",
     "perturbation_type",
     "perturbation_level",
-    "n_samples",
+    "n_original",
+    "n_sampled",
     "series_length",
     "k",
+    "measure_params",
+    "clustering_params",
 ]
 
 
@@ -327,37 +334,98 @@ def run_single_measure(
     y: np.ndarray,
     dataset_name: str,
     measure: str,
-    seed: int,
+    clustering_seed: int,
+    subsample_seed: int = 42,
     perturbation_type: str = "none",
     perturbation_level: str = "0",
     similarity_params: dict | None = None,
+    n_original: int | None = None,
 ) -> dict[str, object]:
-    k = int(len(np.unique(y)))
-    start = time.perf_counter()
-    effective_params = dict(similarity_params or {})
-    result = cluster_time_series(
-        X,
-        k=k,
-        normalize=True,
-        random_state=seed,
-        similarity_metric=measure,
-        similarity_params=effective_params,
+    import json
+    from tsclust.clustering.clustering import _zscore_normalize
+    from tsclust.clustering.k_medoids import k_medoids
+    from tsclust.measures.similarity_measures import (
+        dtw_distance_matrix,
+        euclidean_distance_matrix,
+        msm_distance_matrix,
     )
-    runtime = time.perf_counter() - start
+
+    k = int(len(np.unique(y)))
+    effective_params = dict(similarity_params or {})
     canonical_measure = "ed" if measure == "euclidean" else measure
+
+    # --- z-normalization ---
+    X_norm = _zscore_normalize(X)
+
+    # --- Distance matrix computation (timed) ---
+    params_record: dict[str, object] = {}
+    t0 = time.perf_counter()
+    if canonical_measure in {"euclidean", "ed"}:
+        dist = euclidean_distance_matrix(X_norm)
+    elif canonical_measure == "dtw":
+        backend = effective_params.pop("backend", "auto")
+        # Default: Sakoe-Chiba band = 10% of series length (Javed et al. 2020)
+        default_window = max(1, int(round(X_norm.shape[1] * 0.1)))
+        dtw_window = effective_params.pop("window", default_window)
+        dist = dtw_distance_matrix(X_norm, window=dtw_window, backend=backend)
+        params_record["window"] = dtw_window
+        params_record["backend"] = backend
+    elif canonical_measure == "msm":
+        backend = effective_params.pop("backend", "auto")
+        # Default: c=1.0 (aeon default; no hyperparameter tuning)
+        msm_c = float(effective_params.pop("c", 1.0))
+        dist = msm_distance_matrix(X_norm, c=msm_c, backend=backend)
+        params_record["c"] = msm_c
+        params_record["backend"] = backend
+    elif canonical_measure == "idk":
+        from tsclust.measures.isolation_kernel import IsolationKernel
+        kernel = IsolationKernel(
+            random_state=clustering_seed,
+            **effective_params,
+        ).fit(X_norm)
+        sim = kernel.similarity_matrix(X_norm)
+        # Kernel-induced distance: sqrt(K(x,x)+K(y,y)-2K(x,y))
+        # For L2-normalized feature maps (as in CTDS / Gong et al.),
+        # K(x,x)=1, so this equals sqrt(2-2·sim).  Equivalent to
+        # Euclidean distance in normalised feature space — matches
+        # the distance implicitly used by CTDS's KMeans pipeline.
+        dist = np.sqrt(np.clip(2.0 - 2.0 * sim, 0.0, None))
+        params_record.update(effective_params)
+    else:
+        raise NotImplementedError(f"Unsupported measure: {measure!r}")
+    runtime_dist = time.perf_counter() - t0
+
+    # --- Clustering (timed) ---
+    t1 = time.perf_counter()
+    medoids, labels = k_medoids(dist, k=k, random_state=clustering_seed)
+    runtime_clust = time.perf_counter() - t1
+
+    runtime_total = runtime_dist + runtime_clust
+
+    clustering_params = {
+        "init": "random",
+        "max_iter": 300,
+        "method": "alternate",
+    }
+
+    n_sampled = int(X.shape[0])
     return {
         "dataset": dataset_name,
         "measure": canonical_measure,
         "paradigm": MEASURE_PARADIGMS.get(canonical_measure, "unknown"),
-        "ari": adjusted_rand_score(y, result.labels),
-        "nmi": normalized_mutual_info_score(y, result.labels),
-        "runtime": runtime,
-        "seed": seed,
+        "ari": adjusted_rand_score(y, labels),
+        "nmi": normalized_mutual_info_score(y, labels),
+        "runtime": runtime_total,
+        "subsample_seed": subsample_seed,
+        "clustering_seed": clustering_seed,
         "perturbation_type": perturbation_type,
         "perturbation_level": perturbation_level,
-        "n_samples": int(X.shape[0]),
+        "n_original": int(n_original) if n_original is not None else n_sampled,
+        "n_sampled": n_sampled,
         "series_length": int(X.shape[1]),
         "k": k,
+        "measure_params": json.dumps(params_record) if params_record else "",
+        "clustering_params": json.dumps(clustering_params),
     }
 
 
@@ -369,3 +437,44 @@ def write_result_rows(rows: Iterable[dict[str, object]], output_path: Path) -> N
         for row in rows:
             writer.writerow({field: row.get(field, "")
                             for field in RESULT_FIELDS})
+
+
+def append_result_row(row: dict[str, object], output_path: Path) -> None:
+    """Append a single row to CSV; write header if file is new.
+
+    Used for incremental writing so a crash mid-batch does not lose progress.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not output_path.exists()
+    mode = "w" if write_header else "a"
+    with output_path.open(mode, newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=RESULT_FIELDS)
+        if write_header:
+            writer.writeheader()
+        writer.writerow({field: row.get(field, "")
+                        for field in RESULT_FIELDS})
+
+
+def load_done_keys(
+    output_path: Path,
+    perturbation_type: str = "none",
+) -> set[tuple[str, str, str, str]]:
+    """Load (dataset, measure, perturbation_level, clustering_seed) keys already in CSV.
+
+    Returns empty set if file does not exist.
+    """
+    if not output_path.exists():
+        return set()
+    done: set[tuple[str, str, str, str]] = set()
+    with output_path.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            if row.get("perturbation_type", "none") != perturbation_type:
+                continue
+            done.add((
+                str(row.get("dataset", "")),
+                str(row.get("measure", "")),
+                str(row.get("perturbation_level", "0")),
+                str(row.get("clustering_seed", "")),
+            ))
+    return done

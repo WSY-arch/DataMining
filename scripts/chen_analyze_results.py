@@ -25,7 +25,8 @@ def write_csv(path: Path, rows: list[dict[str, object]], fields: list[str]) -> N
 
 
 def aggregate_seed_rows(rows: list[dict[str, str]]) -> list[dict[str, object]]:
-    grouped: dict[tuple[str, str, str, str, str], list[dict[str, str]]] = defaultdict(list)
+    grouped: dict[tuple[str, str, str, str, str],
+                  list[dict[str, str]]] = defaultdict(list)
     for row in rows:
         key = (
             row["dataset"],
@@ -42,6 +43,9 @@ def aggregate_seed_rows(rows: list[dict[str, str]]) -> list[dict[str, object]]:
         nmi_values = [float(row["nmi"]) for row in seed_rows]
         runtime_values = [float(row["runtime"]) for row in seed_rows]
         first = seed_rows[0]
+        # v2 schema uses n_sampled; legacy CSVs used n_samples. Read both.
+        n_sampled = first.get("n_sampled") or first.get("n_samples", "")
+        n_original = first.get("n_original", "")
         aggregated.append(
             {
                 "dataset": dataset,
@@ -56,7 +60,8 @@ def aggregate_seed_rows(rows: list[dict[str, str]]) -> list[dict[str, object]]:
                 "runtime_mean": mean(runtime_values),
                 "runtime_std": pstdev(runtime_values) if len(runtime_values) > 1 else 0.0,
                 "seeds": len(seed_rows),
-                "n_samples": first.get("n_samples", ""),
+                "n_original": n_original,
+                "n_sampled": n_sampled,
                 "series_length": first.get("series_length", ""),
                 "k": first.get("k", ""),
             }
@@ -78,7 +83,8 @@ def average_ranks(rows: list[dict[str, object]], score_field: str) -> list[dict[
     for dataset, dataset_rows in sorted(grouped.items()):
         scored = sorted(
             dataset_rows,
-            key=lambda row: float(row[score_key]) if row.get(score_key) not in {"", None} else -math.inf,
+            key=lambda row: float(row[score_key]) if row.get(
+                score_key) not in {"", None} else -math.inf,
             reverse=True,
         )
         for rank, row in enumerate(scored, start=1):
@@ -108,10 +114,12 @@ def average_ranks(rows: list[dict[str, object]], score_field: str) -> list[dict[
 def friedman_summary(rows: list[dict[str, object]], score_field: str) -> dict[str, object]:
     score_key = f"{score_field}_mean"
     grouped: dict[str, dict[str, float]] = defaultdict(dict)
-    measures = sorted({row["measure"] for row in rows if row.get("perturbation_type", "none") in {"", "none"}})
+    measures = sorted({row["measure"] for row in rows if row.get(
+        "perturbation_type", "none") in {"", "none"}})
     for row in rows:
         if row.get("perturbation_type", "none") in {"", "none"}:
-            grouped[str(row["dataset"])][str(row["measure"])] = float(row[score_key])
+            grouped[str(row["dataset"])][str(
+                row["measure"])] = float(row[score_key])
 
     complete_datasets = [
         dataset for dataset, scores in grouped.items() if all(measure in scores for measure in measures)
@@ -134,7 +142,8 @@ def friedman_summary(rows: list[dict[str, object]], score_field: str) -> dict[st
             "measures": ",".join(measures),
         }
 
-    samples = [[grouped[dataset][measure] for dataset in complete_datasets] for measure in measures]
+    samples = [[grouped[dataset][measure]
+                for dataset in complete_datasets] for measure in measures]
     statistic, p_value = friedmanchisquare(*samples)
     return {
         "status": "ok",
@@ -149,7 +158,8 @@ def friedman_summary(rows: list[dict[str, object]], score_field: str) -> dict[st
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True, help="Combined result CSV using the shared schema.")
+    parser.add_argument("--input", required=True,
+                        help="Combined result CSV using the shared schema.")
     parser.add_argument("--output-dir", default="results/chen/analysis")
     parser.add_argument("--score-field", choices=["ari", "nmi"], default="ari")
     return parser.parse_args()
@@ -161,7 +171,8 @@ def main() -> int:
     aggregated_rows = aggregate_seed_rows(rows)
     output_dir = Path(args.output_dir)
 
-    rank_rows, per_dataset_rows = average_ranks(aggregated_rows, args.score_field)
+    rank_rows, per_dataset_rows = average_ranks(
+        aggregated_rows, args.score_field)
     summary = friedman_summary(aggregated_rows, args.score_field)
 
     aggregate_fields = [
@@ -177,14 +188,19 @@ def main() -> int:
         "runtime_mean",
         "runtime_std",
         "seeds",
-        "n_samples",
+        "n_original",
+        "n_sampled",
         "series_length",
         "k",
     ]
-    write_csv(output_dir / "seed_aggregated_results.csv", aggregated_rows, aggregate_fields)
-    write_csv(output_dir / f"per_dataset_{args.score_field}_ranks.csv", per_dataset_rows, ["dataset", "measure", "paradigm", f"{args.score_field}_mean", "rank"])
-    write_csv(output_dir / f"average_{args.score_field}_ranks.csv", rank_rows, ["measure", "datasets", "average_rank"])
-    write_csv(output_dir / f"friedman_{args.score_field}.csv", [summary], list(summary.keys()))
+    write_csv(output_dir / "seed_aggregated_results.csv",
+              aggregated_rows, aggregate_fields)
+    write_csv(output_dir / f"per_dataset_{args.score_field}_ranks.csv", per_dataset_rows, [
+              "dataset", "measure", "paradigm", f"{args.score_field}_mean", "rank"])
+    write_csv(output_dir / f"average_{args.score_field}_ranks.csv",
+              rank_rows, ["measure", "datasets", "average_rank"])
+    write_csv(
+        output_dir / f"friedman_{args.score_field}.csv", [summary], list(summary.keys()))
 
     print(f"[OK] wrote analysis files under {output_dir}")
     print(summary)

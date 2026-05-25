@@ -9,6 +9,11 @@ import os
 os.environ.setdefault("LOKY_MAX_CPU_COUNT", str(os.cpu_count() or 1))
 
 from .clustering import ClusteringResult, cluster_time_series, k_medoids
+from .perturbations import (
+    add_gaussian_noise,
+    random_global_shift,
+    truncate_and_resample,
+)
 
 if TYPE_CHECKING:
     from .measures.isolation_kernel import IsolationKernel as IsolationKernelType
@@ -17,8 +22,11 @@ if TYPE_CHECKING:
 __all__ = [
     "ClusteringResult",
     "IsolationKernel",
+    "add_gaussian_noise",
     "cluster_time_series",
     "k_medoids",
+    "random_global_shift",
+    "truncate_and_resample",
 ]
 
 
