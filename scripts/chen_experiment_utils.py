@@ -379,6 +379,8 @@ def run_single_measure(
         params_record["backend"] = backend
     elif canonical_measure == "idk":
         from tsclust.measures.isolation_kernel import IsolationKernel
+        # IsolationKernel does not accept a 'backend' kwarg; pop it if present.
+        backend_hint = effective_params.pop("backend", None)
         kernel = IsolationKernel(
             random_state=clustering_seed,
             **effective_params,
@@ -391,6 +393,31 @@ def run_single_measure(
         # the distance implicitly used by CTDS's KMeans pipeline.
         dist = np.sqrt(np.clip(2.0 - 2.0 * sim, 0.0, None))
         params_record.update(effective_params)
+        if backend_hint is not None:
+            params_record["backend"] = backend_hint
+    elif canonical_measure == "sbd":
+        # Shape-Based Distance (pairwise). Prefer aeon backend when asked,
+        # otherwise use the reference FFT-based implementation.
+        backend = effective_params.pop("backend", "auto")
+        n_jobs = int(effective_params.pop("n_jobs", -1))
+        candidate_k = int(effective_params.pop("candidate_k", 20))
+        paa_segments = int(effective_params.pop("paa_segments", 32))
+        from tsclust.measures.similarity_measures import sbd_distance_matrix
+
+        dist = sbd_distance_matrix(
+            X_norm,
+            backend=backend,
+            n_jobs=n_jobs,
+            standardize=True,
+            candidate_k=candidate_k,
+            paa_segments=paa_segments,
+        )
+        params_record.update({
+            "backend": backend,
+            "n_jobs": n_jobs,
+            "candidate_k": candidate_k,
+            "paa_segments": paa_segments,
+        })
     else:
         raise NotImplementedError(f"Unsupported measure: {measure!r}")
     runtime_dist = time.perf_counter() - t0

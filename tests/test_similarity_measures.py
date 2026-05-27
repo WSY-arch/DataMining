@@ -1,6 +1,8 @@
 from tsclust.measures.similarity_measures import (
     dtw_distance,
     msm_distance,
+    sbd_distance,
+    sbd_distance_matrix,
     pairwise_time_series_distance_matrix,
 )
 from tsclust.clustering import cluster_time_series
@@ -58,3 +60,24 @@ def test_pairwise_matrix_and_clustering_dispatch():
         )
         assert result.distance_matrix.shape == (4, 4)
         assert result.labels.shape == (4,)
+
+
+def test_sbd_is_circular_shift_invariant():
+    rng = np.random.default_rng(42)
+    x = rng.normal(size=96)
+    y = rng.normal(size=96)
+
+    base = sbd_distance(x, y, standardize=True)
+    for shift in [1, 5, 10, 48]:
+        rolled = sbd_distance(np.roll(x, shift), y, standardize=True)
+        assert np.isclose(rolled, base, atol=1e-10)
+
+
+def test_sbd_distance_matrix_is_circular_shift_invariant():
+    rng = np.random.default_rng(123)
+    X = rng.normal(size=(5, 96))
+    base = sbd_distance_matrix(X, backend="reference", standardize=True)
+
+    for shift in [1, 5, 10, 48]:
+        rolled = sbd_distance_matrix(np.roll(X, shift, axis=1), backend="reference", standardize=True)
+        assert np.allclose(base, rolled, atol=1e-10)

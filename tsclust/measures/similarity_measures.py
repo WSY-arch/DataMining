@@ -270,11 +270,21 @@ def distance_to_similarity(distance_matrix: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + distance_matrix)
 
 
+def _zscore_1d(x: np.ndarray) -> np.ndarray:
+    x = np.asarray(x, dtype=float).ravel()
+    mean = float(np.mean(x))
+    std = float(np.std(x))
+    if std == 0.0:
+        return x - mean
+    return (x - mean) / std
+
+
 def sbd_distance(x: np.ndarray, y: np.ndarray, standardize: bool = True) -> float:
     """
-    Compute Shape-Based Distance between two z-normalized sequences.
+    Compute Shape-Based Distance between two equal-length sequences.
     
-    SBD is based on cross-correlation of the sequences and measures shape similarity.
+    This implementation uses circular cross-correlation so the result is
+    exactly invariant to circular shifts of either input.
     Lower values indicate more similar shapes.
     
     Reference:
@@ -287,6 +297,9 @@ def sbd_distance(x: np.ndarray, y: np.ndarray, standardize: bool = True) -> floa
     
     if len(x) == 0 or len(y) == 0:
         raise ValueError("SBD inputs must be non-empty")
+
+    if x.size != y.size:
+        raise ValueError("SBD requires equal-length sequences for circular-shift invariance")
     
     # Ensure sequences are 1D
     x = x.ravel()
@@ -294,38 +307,24 @@ def sbd_distance(x: np.ndarray, y: np.ndarray, standardize: bool = True) -> floa
     
     if standardize:
         # z-normalize each sequence independently
-        x_mean, x_std = np.mean(x), np.std(x)
-        if x_std == 0:
-            x_norm = x - x_mean
-        else:
-            x_norm = (x - x_mean) / x_std
-
-        y_mean, y_std = np.mean(y), np.std(y)
-        if y_std == 0:
-            y_norm = y - y_mean
-        else:
-            y_norm = (y - y_mean) / y_std
+        x_norm = _zscore_1d(x)
+        y_norm = _zscore_1d(y)
     else:
         x_norm = x
         y_norm = y
-    
-    # Compute cross-correlation via convolution
-    # np.convolve computes the discrete convolution of two sequences
-    ncc = np.convolve(x_norm, y_norm[::-1], mode='full')
 
-    # Normalize by length only when raw inputs are provided.
-    if standardize:
-        x_std = float(np.std(x))
-        y_std = float(np.std(y))
-        ncc = ncc / (len(x) * x_std * y_std) if (x_std > 0 and y_std > 0) else ncc / len(x)
+    # Circular cross-correlation via FFT. This evaluates all circular shifts
+    # exactly, which is the strict shift-invariant variant required by the
+    # perturbation protocol.
+    corr = np.fft.ifft(np.fft.fft(x_norm) * np.conjugate(np.fft.fft(y_norm))).real
+
+    denom = float(np.linalg.norm(x_norm) * np.linalg.norm(y_norm))
+    if denom == 0.0:
+        max_ncc = 0.0
     else:
-        ncc = ncc / len(x)
-    
-    # Maximum normalized cross-correlation
-    max_ncc = np.max(ncc)
-    
+        max_ncc = float(np.max(corr / denom))
+
     # SBD distance: 1 - max_ncc (range [0, 2])
-    # Clamped to [0, 2]
     sbd = 1.0 - max_ncc
     return float(np.clip(sbd, 0.0, 2.0))
 
@@ -406,14 +405,9 @@ def sbd_distance_matrix(
             standardize=standardize,
         )
     
-    if backend in {"auto", "aeon"}:
-        try:
-            return _call_aeon_sbd_pairwise_distance(X, standardize=standardize, n_jobs=n_jobs)
-        except Exception:
-            if backend == "aeon":
-                raise
-
     if backend in {"auto", "reference"}:
         return pairwise_time_series_distance_matrix(X, sbd_distance, standardize=standardize)
+    if backend == "aeon":
+        return _call_aeon_sbd_pairwise_distance(X, standardize=standardize, n_jobs=n_jobs)
     else:
         raise ValueError("backend must be one of: auto, approx, candidate, pruned, aeon, reference")

@@ -109,11 +109,13 @@ def _candidate_pairs_from_features(
 
 
 def sbd_distance_pair(x: np.ndarray, y: np.ndarray, standardize: bool = True) -> float:
-    """SBD between two 1-D series. Verbatim from Wang (renamed)."""
+    """SBD between two 1-D series using circular cross-correlation."""
     x = np.asarray(x, dtype=float).ravel()
     y = np.asarray(y, dtype=float).ravel()
     if len(x) == 0 or len(y) == 0:
         raise ValueError("SBD inputs must be non-empty")
+    if x.size != y.size:
+        raise ValueError("SBD requires equal-length sequences for circular-shift invariance")
     if standardize:
         x_mean, x_std = np.mean(x), np.std(x)
         x_norm = x - x_mean if x_std == 0 else (x - x_mean) / x_std
@@ -122,17 +124,14 @@ def sbd_distance_pair(x: np.ndarray, y: np.ndarray, standardize: bool = True) ->
     else:
         x_norm = x
         y_norm = y
-    ncc = np.convolve(x_norm, y_norm[::-1], mode="full")
-    if standardize:
-        x_std_o = float(np.std(x))
-        y_std_o = float(np.std(y))
-        if x_std_o > 0 and y_std_o > 0:
-            ncc = ncc / (len(x) * x_std_o * y_std_o)
-        else:
-            ncc = ncc / len(x)
+
+    corr = np.fft.ifft(np.fft.fft(x_norm) * np.conjugate(np.fft.fft(y_norm))).real
+    denom = float(np.linalg.norm(x_norm) * np.linalg.norm(y_norm))
+    if denom == 0.0:
+        max_ncc = 0.0
     else:
-        ncc = ncc / len(x)
-    return float(np.clip(1.0 - np.max(ncc), 0.0, 2.0))
+        max_ncc = float(np.max(corr / denom))
+    return float(np.clip(1.0 - max_ncc, 0.0, 2.0))
 
 
 def wang_sbd_approx_distance_matrix(
