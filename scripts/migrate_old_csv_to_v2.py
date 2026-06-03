@@ -49,7 +49,8 @@ DEFAULT_CLUSTERING_PARAMS = json.dumps(
     {"init": "random", "max_iter": 300, "method": "alternate"}, separators=(",", ":")
 )
 
-DROP_COLS = ["runtime_distance_matrix", "runtime_clustering", "n_classes_predicted"]
+DROP_COLS = ["runtime_distance_matrix",
+             "runtime_clustering", "n_classes_predicted"]
 
 
 def migrate_one(path: Path) -> tuple[bool, str]:

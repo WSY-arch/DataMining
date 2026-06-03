@@ -377,8 +377,20 @@ def run_single_measure(
         dist = msm_distance_matrix(X_norm, c=msm_c, backend=backend)
         params_record["c"] = msm_c
         params_record["backend"] = backend
+    elif canonical_measure == "sbd":
+        from tsclust.measures.similarity_measures import sbd_distance_matrix
+        backend = effective_params.pop("backend", "aeon")
+        n_jobs = int(effective_params.pop("n_jobs", -1))
+        # standardize=False because we already z-normalized above
+        dist = sbd_distance_matrix(
+            X_norm, backend=backend, n_jobs=n_jobs, standardize=False,
+        )
+        params_record["backend"] = backend
+        params_record["n_jobs"] = n_jobs
     elif canonical_measure == "idk":
         from tsclust.measures.isolation_kernel import IsolationKernel
+        # Pop keys that IsolationKernel does not accept
+        effective_params.pop("backend", None)
         kernel = IsolationKernel(
             random_state=clustering_seed,
             **effective_params,

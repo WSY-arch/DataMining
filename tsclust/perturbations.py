@@ -197,5 +197,5 @@ def truncate_and_resample(X: np.ndarray, keep_fraction: float) -> np.ndarray:
     keep = max(2, int(round(length * keep_fraction)))
     drop = length - keep
     head_drop = drop // 2
-    truncated = X[:, head_drop : head_drop + keep]
+    truncated = X[:, head_drop: head_drop + keep]
     return scipy_resample(truncated, length, axis=1)

@@ -166,6 +166,44 @@ def pairwise_time_series_distance_matrix(
     return dist
 
 
+def sbd_distance_matrix(
+    X: np.ndarray,
+    backend: str = "aeon",
+    n_jobs: int = -1,
+    standardize: bool = True,
+) -> np.ndarray:
+    """Return an SBD pairwise distance matrix.
+
+    Parameters
+    ----------
+    X : np.ndarray, shape (n_samples, series_length)
+    backend : 'aeon' (exact, recommended) or 'reference' (slow O(n^2) Python loop)
+    standardize : whether to z-normalize within the SBD computation
+    """
+    X = np.asarray(X, dtype=float)
+    backend = backend.lower().strip()
+    if backend in {"auto", "aeon"}:
+        from aeon.distances import sbd_pairwise_distance
+        return np.asarray(
+            sbd_pairwise_distance(X, standardize=standardize),
+            dtype=float,
+        )
+    if backend == "reference":
+        # Slow pure-Python fallback using circular cross-correlation
+        def _sbd_pair(x, y):
+            if standardize:
+                xm, xs = x.mean(), x.std()
+                ym, ys = y.mean(), y.std()
+                x = (x - xm) / xs if xs > 0 else x - xm
+                y = (y - ym) / ys if ys > 0 else y - ym
+            corr = np.fft.ifft(np.fft.fft(x) * np.conj(np.fft.fft(y))).real
+            denom = float(np.linalg.norm(x) * np.linalg.norm(y))
+            ncc_max = float(np.max(corr / denom)) if denom > 0 else 0.0
+            return float(np.clip(1.0 - ncc_max, 0.0, 2.0))
+        return pairwise_time_series_distance_matrix(X, _sbd_pair)
+    raise ValueError(f"sbd_distance_matrix: unsupported backend {backend!r}")
+
+
 def distance_to_similarity(distance_matrix: np.ndarray) -> np.ndarray:
     """Convert a non-negative distance matrix to a bounded similarity matrix."""
     distance_matrix = np.asarray(distance_matrix, dtype=float)

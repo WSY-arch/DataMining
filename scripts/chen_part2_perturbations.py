@@ -189,10 +189,12 @@ def main() -> int:
             print(
                 f"[DATASET] {dataset_name}: X={X.shape}, k={len(set(y))}, n_original={n_original}")
 
-            perturbations: list[tuple[str, float, np.ndarray, np.ndarray | None, float | None, int | None]] = []
+            perturbations: list[tuple[str, float, np.ndarray,
+                                      np.ndarray | None, float | None, int | None]] = []
             for level in args.noise_levels:
                 perturbations.append((
-                    "noise", float(level), add_gaussian_noise(X, level, base_seed), None, None, None,
+                    "noise", float(level), add_gaussian_noise(
+                        X, level, base_seed), None, None, None,
                 ))
             series_length = int(X.shape[1])
             for pct in args.shift_pct:
@@ -204,11 +206,13 @@ def main() -> int:
                 # CSV rows are directly comparable; abs_shift is preserved in
                 # the per-cell metadata for reproducibility.
                 perturbations.append((
-                    "shift", float(pct), shifted, shift_amounts, float(pct), abs_shift,
+                    "shift", float(pct), shifted, shift_amounts, float(
+                        pct), abs_shift,
                 ))
             for level in args.length_fractions:
                 perturbations.append((
-                    "length", float(level), truncate_and_resample(X, level), None, None, None,
+                    "length", float(level), truncate_and_resample(
+                        X, level), None, None, None,
                 ))
 
             cells_root = Path(args.cells_dir) if not args.no_cells else None
