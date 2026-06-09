@@ -1,0 +1,2 @@
+subset,metric,n_blocks,n_algorithms,friedman_stat,pvalue,cd,rank_ed,rank_dtw,rank_msm,rank_sbd,rank_idk
+perturbation_type=length,ari,15,5,15.626666666666665,0.003563302102974905,1.5748812673105734,4.066666666666666,2.6666666666666665,2.0,2.7333333333333334,3.533333333333333

@@ -1,0 +1,2 @@
+subset,metric,n_blocks,n_algorithms,friedman_stat,pvalue,cd,rank_ed,rank_dtw,rank_msm,rank_sbd,rank_idk
+perturbation_type=noise,ari,15,5,27.413333333333355,1.6397760932690196e-05,1.5748812673105734,4.0,2.8,2.466666666666667,1.6,4.133333333333334

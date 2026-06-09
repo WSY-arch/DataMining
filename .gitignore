@@ -2,9 +2,10 @@
 data/
 datasets/
 
-# --- 实验结果（默认不上传，白名单共享 npz cells 给 Wang）---
+# --- 实验结果（默认不上传，白名单共享）---
 results/*
 !results/_perturbed_cells/
+!results/merged/
 scratch/results/
 
 # --- Python 缓存 ---
@@ -27,3 +28,7 @@ docs/reportScratch/
 
 # --- 第三方源码参考（含嵌套 .git）---
 refs/CTDS/
+refs/papers/
+
+# --- 临时文件 ---
+_tmp*
