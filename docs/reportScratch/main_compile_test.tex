@@ -1,0 +1,43 @@
+\documentclass[11pt,a4paper]{article}
+
+% --- Packages (XeLaTeX) ---
+\usepackage{fontspec}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+
+% --- Dummy bibliography command (no .bib needed for test) ---
+\newcommand{\bibentry}[1]{[#1]}
+% We use a simple numeric style for test compilation
+\usepackage[numbers]{natbib}
+
+\title{Mechanism-Oriented Comparison of Time-Series Clustering\\
+Similarity Measures across Noise, Misalignment, and Length}
+\author{Chen \and Wang}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+% Include the main sections
+\input{sections_intro_rw_method.tex}
+
+% Placeholder bibliography for compilation test
+\begin{thebibliography}{99}
+\bibitem{berndt1994dtw} Berndt, D.J. and Clifford, J. (1994). Using dynamic time warping to find patterns in time series. \emph{KDD Workshop}.
+\bibitem{stefan2013msm} Stefan, A., Athitsos, V., and Das, G. (2013). The move-split-merge metric for time series. \emph{IEEE TKDE}.
+\bibitem{paparrizos2015kshape} Paparrizos, J. and Gravano, L. (2015). k-Shape: Efficient and accurate clustering of time series. \emph{SIGMOD}.
+\bibitem{bagnall2017bakeoff} Bagnall, A. et al. (2017). The great time series classification bake off. \emph{Data Mining and Knowledge Discovery}.
+\bibitem{cuturi2017softdtw} Cuturi, M. and Blondel, M. (2017). Soft-DTW: A differentiable loss function for time-series. \emph{ICML}.
+\bibitem{javed2020benchmark} Javed, A. et al. (2020). A benchmark study on time series clustering. \emph{Machine Learning}.
+\bibitem{paparrizos2020normalisation} Paparrizos, J. et al. (2020). Debunking four long-standing misconceptions of time-series distance measures. \emph{SIGMOD}.
+\bibitem{ting2022idk} Ting, K.M. et al. (2022). Isolation distributional kernel: A new tool for kernel based anomaly detection. \emph{arXiv:2205.09092}.
+\bibitem{holder2023msm} Holder, C. and Bagnall, A. (2023). Clustering time series with MSM distance. \emph{Data Mining and Knowledge Discovery}.
+\bibitem{gong2024ctds} Gong, X. et al. (2024). CTDS: Centralized time-series data summarization via isolation distributional kernel. \emph{PAKDD}.
+\bibitem{paparrizos2025tscbenchmark} Paparrizos, J. et al. (2025). TSCluster: A benchmark for time-series clustering. \emph{PVLDB}.
+\bibitem{kaufman1990pam} Kaufman, L. and Rousseeuw, P.J. (1990). \emph{Finding Groups in Data}. Wiley.
+\end{thebibliography}
+
+\end{document}

@@ -151,7 +151,8 @@ def main() -> int:
     # --- Part 1: migrate + merge ---
     print("=== Part 1 Merge ===")
     dataset_meta = build_dataset_meta(chen_part1_path)
-    print(f"  Chen Part 1: {chen_part1_path.name} (meta for {len(dataset_meta)} datasets)")
+    print(
+        f"  Chen Part 1: {chen_part1_path.name} (meta for {len(dataset_meta)} datasets)")
 
     wang_p1_raw = read_csv(wang_part1_path)
     print(f"  Wang Part 1: {len(wang_p1_raw)} rows (old schema)")
@@ -162,7 +163,8 @@ def main() -> int:
     print(f"  Chen Part 1: {len(chen_p1)} rows")
 
     merged_p1 = chen_p1 + wang_p1_v2
-    merged_p1.sort(key=lambda r: (r["dataset"], r["measure"], int(r["clustering_seed"])))
+    merged_p1.sort(key=lambda r: (
+        r["dataset"], r["measure"], int(r["clustering_seed"])))
     write_csv(merged_p1, results_root / "merged" / "part1_all_5measures.csv")
 
     # --- Part 2: direct concat ---

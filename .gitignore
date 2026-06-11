@@ -22,9 +22,11 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# --- 个人计划/草稿/报告底稿（不上传）---
+# --- 个人计划（不上传）---
 docs/PlanAndLogs/
-docs/reportScratch/
+
+# --- 论文底稿（共享给协作者）---
+# docs/reportScratch/ 已放行，供 Wang 参考 Intro/RW/Methodology 写 Results
 
 # --- 第三方源码参考（含嵌套 .git）---
 refs/CTDS/
@@ -32,3 +34,9 @@ refs/papers/
 
 # --- 临时文件 ---
 _tmp*
+
+# --- LaTeX 编译产物 ---
+*.aux
+*.log
+*.out
+*.synctex.gz

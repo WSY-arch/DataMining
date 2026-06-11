@@ -1,0 +1,323 @@
+% =============================================================================
+% Introduction / Related Work / Methodology
+% Project: Mechanism-Oriented Comparison of Time-Series Clustering
+%          Similarity Measures across Noise, Misalignment, and Length
+% =============================================================================
+
+\section{Introduction}\label{sec:introduction}
+
+Time-series clustering relies fundamentally on how similarity between sequences is defined.
+Different similarity measures encode distinct assumptions about alignment, temporal variation, and signal structure.
+\emph{Lock-step} measures such as Euclidean distance (ED) compare time points one-to-one;
+\emph{elastic} measures such as Dynamic Time Warping (DTW)~\cite{berndt1994dtw} and Move--Split--Merge (MSM)~\cite{stefan2013msm} permit local temporal warping;
+\emph{sliding} measures such as Shape-Based Distance (SBD)~\cite{paparrizos2015kshape} emphasise shape similarity under global phase shifts via normalised cross-correlation;
+and \emph{distributional kernel} methods such as the Isolation Distributional Kernel (IDK)~\cite{ting2022idk} compare subsequence distributions without explicit point-to-point alignment.
+
+Extensive benchmark studies have compared time-series distances and clustering algorithms across large archives~\cite{paparrizos2025tscbenchmark,javed2020benchmark}, yet they predominantly report aggregate performance on clean datasets.
+This leaves a \emph{mechanistic} question unanswered: how do noise, temporal misalignment, and sequence length individually affect the relative performance of different similarity paradigms?
+The question is practically important because a measure that excels on well-aligned data may collapse under phase shifts, whereas a more invariant measure may discard temporal information that certain classes require.
+
+This paper addresses this gap through a unified time-series clustering framework that compares ED, DTW, MSM, SBD, and IDK under both real-data benchmarking and controlled perturbation experiments.
+We adopt a k-medoids pipeline with a shared evaluation protocol across 18 UCR datasets~\cite{bagnall2017bakeoff} and apply three systematic perturbations---additive Gaussian noise, random temporal shift, and truncation-based length reduction---on representative subsets.
+Our goal is \emph{not} to crown a single universal winner, but to explain under what data-generating conditions each similarity paradigm is most appropriate.
+
+The contributions of this work are:
+\begin{enumerate}
+    \item A fair, mechanism-oriented comparison of five representative similarity measures spanning the lock-step, elastic, sliding, and distributional paradigms.
+    \item A unified k-medoids clustering pipeline with shared result schema, fixed hyperparameters, and 10-seed repetition for statistical rigour.
+    \item A controlled perturbation study that isolates the effects of noise, misalignment, and temporal resolution on clustering quality, producing interpretable degradation curves.
+    \item Mechanistic explanations linking each measure's invariance properties to its empirical robustness profile.
+\end{enumerate}
+
+% =============================================================================
+\section{Related Work}\label{sec:related-work}
+
+\subsection{Benchmark Studies of Time-Series Distances}\label{sec:rw-distance-benchmarks}
+
+Large-scale comparisons of time-series distance functions have established taxonomies that categorise measures by their alignment strategy.
+Paparrizos et al.~\cite{paparrizos2025tscbenchmark} evaluated over 70 distance functions across the UCR archive, introducing a principled normalisation framework and statistical ranking methodology.
+Their findings demonstrated that no single distance dominates universally and that z-normalisation is a prerequisite for fair comparison---a practice we adopt throughout.
+Bagnall et al.~\cite{bagnall2017bakeoff} provided the seminal classification benchmark across 85 UCR datasets, establishing DTW with a learned warping window as the baseline to beat.
+While these studies provide comprehensive cross-paradigm rankings, they are oriented toward classification rather than clustering and do not systematically isolate the effect of individual data perturbations on distance performance.
+
+\subsection{Time-Series Clustering Benchmarks}\label{sec:rw-clustering-benchmarks}
+
+Javed et al.~\cite{javed2020benchmark} benchmarked time-series clustering methods using ED, DTW, and shape-based distances with various clustering algorithms, confirming that the choice of distance function matters more than the choice of clustering algorithm for many datasets.
+Paparrizos and Gravano~\cite{paparrizos2015kshape} demonstrated that SBD combined with centroid refinement (k-Shape) achieves competitive clustering quality with substantially lower computational cost than DTW-based approaches.
+These works establish ED, DTW, and SBD as essential baselines for any clustering comparison.
+However, they do not include IDK---a fundamentally different distributional paradigm---nor do they apply controlled noise, shift, or length sweeps to characterise robustness mechanisms.
+
+\subsection{Elastic Distances for Clustering}\label{sec:rw-elastic}
+
+Beyond DTW, the elastic distance family includes measures such as MSM~\cite{stefan2013msm}, Time Warp Edit Distance (TWE), and Edit Distance on Real Sequences (EDR).
+Holder and Bagnall~\cite{holder2023msm} demonstrated that MSM can outperform DTW for clustering when the distance geometry aligns with the clustering objective, particularly in datasets where amplitude changes carry discriminative information.
+Their analysis supports the use of k-medoids (rather than k-means) as the clustering algorithm, since medoid-based methods only require pairwise distances and do not assume a meaningful averaging operation in the original space.
+This motivates our inclusion of MSM alongside DTW and our adoption of k-medoids as the unified clustering backbone.
+
+\subsection{Distributional and Kernel-Based Approaches}\label{sec:rw-distributional}
+
+Distributional approaches represent time series through summary statistics of their subsequence structure rather than explicit point-to-point alignment.
+The Isolation Distributional Kernel (IDK)~\cite{ting2022idk} maps each instance into a feature space derived from isolation mechanisms, yielding a positive semi-definite kernel.
+Gong et al.~\cite{gong2024ctds} applied IDK to time-series clustering via CTDS, demonstrating competitive performance against shape-based methods on selected UCR datasets.
+However, IDK has not been systematically compared with ED, DTW, MSM, and SBD within a unified k-medoids framework, nor has its behaviour under controlled perturbations been characterised.
+Our work frames IDK as representing a \emph{distributional paradigm}---not merely an additional distance entry---and examines whether its lack of explicit temporal alignment confers robustness to noise and misalignment at the cost of temporal-order sensitivity.
+
+\subsection{Soft-DTW and Differentiable Alignment}\label{sec:rw-softdtw}
+
+Cuturi and Blondel~\cite{cuturi2017softdtw} introduced Soft-DTW, a differentiable relaxation of DTW that enables gradient-based optimisation of barycentres and has been widely adopted in deep learning pipelines for time series.
+While Soft-DTW is not included as a primary measure in our comparison (it is designed as a loss function rather than a distance for medoid selection), its boundary-handling conventions---particularly edge padding for shift experiments---inform our perturbation protocol design (Section~\ref{sec:method-perturbation}).
+
+% =============================================================================
+\section{Methodology}\label{sec:methodology}
+
+\subsection{Overview}\label{sec:method-overview}
+
+We evaluate univariate whole time-series clustering using a unified k-medoids pipeline.
+Each dataset is represented as a matrix $X \in \mathbb{R}^{n \times L}$, where $n$ is the number of instances and $L$ is the series length.
+The number of clusters $k$ is set to the ground-truth number of classes to ensure fair evaluation; class labels are used \emph{only} for computing external validity indices (ARI and NMI) and never participate in the clustering process.
+All series are z-normalised (zero mean, unit variance) prior to similarity computation, following the UCR-standard preprocessing protocol~\cite{paparrizos2020normalisation}.
+
+The experimental design consists of two complementary parts:
+\begin{itemize}
+    \item \textbf{Part~1: Real-data benchmark.} We evaluate all five measures on 18 selected UCR datasets covering a range of series lengths ($L \in [24, 1460]$), class counts ($k \in [2, 10]$), and application domains.
+    \item \textbf{Part~2: Controlled perturbation study.} We apply three systematic transformations---noise, misalignment, and length reduction---to representative datasets and trace the resulting degradation of clustering quality.
+\end{itemize}
+
+\subsection{Similarity Measures}\label{sec:method-measures}
+
+We compare five measures spanning four similarity paradigms:
+
+\begin{enumerate}
+    \item \textbf{Euclidean Distance (ED)} --- \emph{lock-step}.
+    Point-wise $\ell_2$ distance requiring exact temporal alignment:
+    $d_{\mathrm{ED}}(x, y) = \sqrt{\sum_{t=1}^{L}(x_t - y_t)^2}$.
+
+    \item \textbf{Dynamic Time Warping (DTW)} --- \emph{elastic}.
+    Finds an optimal alignment path under a Sakoe--Chiba band constraint with window $w = \lfloor 0.1 \cdot L \rfloor$~\cite{javed2020benchmark}:
+    $d_{\mathrm{DTW}}(x, y) = \min_{\pi \in \mathcal{A}_w} \sqrt{\sum_{(i,j)\in\pi}(x_i - y_j)^2}$.
+
+    \item \textbf{Move--Split--Merge (MSM)} --- \emph{elastic/edit}.
+    Extends elastic alignment with split and merge edit operations at fixed cost $c = 1.0$~\cite{stefan2013msm,holder2023msm}.
+
+    \item \textbf{Shape-Based Distance (SBD)} --- \emph{sliding}.
+    Defined as $d_{\mathrm{SBD}}(x, y) = 1 - \max_w \mathrm{NCC}_w(x, y)$, where $\mathrm{NCC}_w$ denotes the normalised cross-correlation at lag $w$~\cite{paparrizos2015kshape}.
+    SBD is by construction invariant to circular shifts of its inputs.
+
+    \item \textbf{Isolation Distributional Kernel (IDK)} --- \emph{distributional}.
+    IDK~\cite{ting2022idk} produces a positive semi-definite kernel $K(x, y) \in [0, 1]$.
+    To integrate IDK into the k-medoids framework, we convert it to a metric distance via the kernel-induced transformation:
+    \begin{equation}\label{eq:idk-distance}
+        d_{\mathrm{IDK}}(x, y) = \sqrt{K(x,x) + K(y,y) - 2\,K(x,y)}.
+    \end{equation}
+    Because IDK feature maps are $L_2$-normalised (i.e., $K(x,x) = 1$), this simplifies to $d_{\mathrm{IDK}}(x,y) = \sqrt{2 - 2\,K(x,y)}$.
+    This formulation is mathematically equivalent to the Euclidean distance implicitly computed by CTDS~\cite{gong2024ctds} when applying $k$-means on $L_2$-normalised IDK feature mean maps, ensuring consistency with prior work while adapting to our medoid-based pipeline.
+\end{enumerate}
+
+No hyperparameter tuning was performed; all measures use default or literature-recommended settings.
+This is a deliberate fairness constraint: the comparison targets the \emph{paradigm-level} properties of each measure, not the outcome of measure-specific optimisation.
+
+\subsection{Datasets}\label{sec:method-datasets}
+
+We select 18 datasets from the UCR Time Series Archive~\cite{bagnall2017bakeoff}, summarised in Table~\ref{tab:datasets}.
+The selection criteria are: (i)~coverage of series lengths from 24 to 1460, (ii)~inclusion of binary and multi-class problems ($k$ from 2 to 10), and (iii)~representation of diverse domains including synthetic, sensor, medical, motion, shape, spectroscopy, and device signals.
+
+\begin{table}[htbp]
+\centering
+\caption{Selected UCR datasets for Part~1 benchmark.}\label{tab:datasets}
+\small
+\begin{tabular}{rlrrrl}
+\toprule
+\# & Dataset & $L$ & $k$ & $n$ & Domain \\
+\midrule
+1  & Chinatown           &   24 &  2 &  363 & Traffic \\
+2  & SyntheticControl    &   60 &  6 &  600 & Synthetic \\
+3  & MoteStrain          &   84 &  2 & 1272 & Sensor \\
+4  & ECG200              &   96 &  2 &  200 & Medical \\
+5  & CBF                 &  128 &  3 &  930 & Synthetic \\
+6  & TwoPatterns         &  128 &  4 & 5000 & Synthetic \\
+7  & ECGFiveDays         &  136 &  2 &  884 & Medical \\
+8  & Plane               &  144 &  7 &  210 & Sensor \\
+9  & GunPoint            &  150 &  2 &  200 & Motion \\
+10 & Wine                &  234 &  2 &  111 & Spectroscopy \\
+11 & ArrowHead           &  251 &  3 &  211 & Shape \\
+12 & Trace               &  275 &  4 &  200 & Synthetic \\
+13 & Coffee              &  286 &  2 &   56 & Spectroscopy \\
+14 & DiatomSizeReduction &  345 &  4 &  322 & Image \\
+15 & Symbols             &  398 &  6 & 1020 & Shape \\
+16 & OSULeaf             &  427 &  6 &  442 & Shape \\
+17 & Computers           &  720 &  2 &  500 & Device \\
+18 & ACSF1               & 1460 & 10 &  200 & Device \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For datasets where full pairwise computation is prohibitively expensive (TwoPatterns, Symbols, Computers), we apply stratified sampling (equal instances per class) with a fixed subsample seed to ensure all measures are evaluated on identical subsets.
+
+\subsection{Clustering Protocol}\label{sec:method-clustering}
+
+For each dataset--measure combination, we:
+\begin{enumerate}
+    \item Compute the full $n \times n$ pairwise distance matrix.
+    \item Run the PAM (Partitioning Around Medoids) algorithm~\cite{kaufman1990pam} with $k$ equal to the ground-truth class count, using the \texttt{alternate} heuristic for initialisation.
+    \item Repeat with 10 independent clustering seeds ($s = 1, 2, \ldots, 10$) to capture initialisation variance.
+    \item Report the Adjusted Rand Index (ARI) and Normalised Mutual Information (NMI) averaged over seeds, with standard deviations.
+\end{enumerate}
+
+Cross-measure statistical comparison uses the Friedman test over datasets, with average ranks as the primary summary statistic.
+This follows established practice in time-series benchmarking~\cite{bagnall2017bakeoff,paparrizos2025tscbenchmark}.
+
+\subsection{Perturbation Study}\label{sec:method-perturbation}
+
+The perturbation study uses three representative datasets: CBF ($L=128$, $k=3$), Trace ($L=275$, $k=4$), and ECG200 ($L=96$, $k=2$).
+These were selected for their clear class structures, moderate sizes (enabling dense perturbation $\times$ seed grids), and coverage of synthetic and real signals.
+
+All randomness is generated through \texttt{numpy.random.Generator} (PCG64) seeded from a single \texttt{SeedSequence}; per-cell sub-streams are obtained via \texttt{SeedSequence.spawn}, ensuring independence and bit-exact reproducibility across runs.
+
+\subsubsection{Noise Perturbation}\label{sec:method-noise}
+
+Gaussian noise is injected as:
+\begin{equation}
+    x'(t) = x(t) + \varepsilon(t), \quad \varepsilon(t) \sim \mathcal{N}(0, \sigma^2),
+\end{equation}
+where $\sigma = \ell \cdot \mathrm{std}(x)$ and $\ell$ is the noise level swept over $\{0.0, 0.1, 0.2, 0.4, 0.8\}$.
+Because all series are z-normalised prior to perturbation ($\mathrm{std}(x) = 1$), $\sigma$ numerically equals $\ell$.
+The relative formulation ensures cross-dataset comparability: the level $\ell = 0.0$ serves as the unperturbed baseline, while $\ell = 0.8$ (SNR~$\approx 2$~dB) probes whether each metric retains residual discriminative power when noise approaches the signal's own variance.
+
+\subsubsection{Misalignment Perturbation}\label{sec:method-shift}
+
+Misalignment is introduced by shifting each series independently by an integer amount $s_i \sim \mathrm{Uniform}\{-S, +S\}$, where the maximum shift $S$ corresponds to $\{0\%, 5\%, 10\%, 20\%, 30\%\}$ of the series length $L$.
+Per-instance shifts are required because a globally uniform shift leaves all pairwise Euclidean distances invariant and therefore fails to constitute a meaningful perturbation.
+
+After shifting, vacated positions are filled by \emph{edge replication} (the first or last observed value, depending on shift direction).
+Edge padding is chosen as the default because:
+\begin{enumerate}
+    \item The target datasets are not periodic---circular wrap-around would graft semantically incompatible regions.
+    \item SBD is by construction invariant under circular shifts; a circular-default protocol would trivially yield zero degradation, conflating metric definition with empirical robustness.
+\end{enumerate}
+A circular-shift ablation is reported separately to characterise SBD's intrinsic translation invariance as a distinct finding.
+
+\subsubsection{Length Perturbation}\label{sec:method-length}
+
+Length perturbation is performed by symmetrically truncating each series from both ends to $\lceil L \cdot f \rceil$ samples (with a floor of~2), then resampling back to the original length $L$ via FFT-based polyphase interpolation (\texttt{scipy.signal.resample}).
+Truncation fractions are swept over $f \in \{1.0, 0.9, 0.75, 0.5, 0.25\}$, where $f=1.0$ is the unperturbed control.
+Zero-padding is deliberately excluded: on z-normalised signals it introduces a boundary step discontinuity that confounds length change with edge-artifact injection.
+Two-sided truncation preserves the signal's temporal centre of mass, ensuring that the diagnostic waveform region (e.g., the QRS complex in ECG200 or the bell shape in CBF) is not systematically destroyed.
+
+\subsection{Expected Mechanism Table}\label{sec:method-mechanisms}
+
+Table~\ref{tab:mechanisms} summarises the invariance properties and expected perturbation behaviour of each measure, which guide our interpretation of the degradation curves.
+
+\begin{table}[htbp]
+\centering
+\caption{Similarity paradigms and expected perturbation responses.}\label{tab:mechanisms}
+\small
+\begin{tabular}{lll}
+\toprule
+Measure & Mechanism & Expected behaviour \\
+\midrule
+ED  & Pointwise lock-step & Strong on aligned data; degrades under shift. \\
+DTW & Local elastic warping & Robust to local timing changes; may overfit noise. \\
+MSM & Edit + warp operations & More stable than DTW in general; parameter-sensitive. \\
+SBD & Normalised cross-correlation & Strong under global phase shift; weak under local warping. \\
+IDK & Distributional kernel & May improve with length; may lose temporal order. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These hypotheses are \emph{a priori} and will be confronted with empirical degradation curves in Section~\ref{sec:results}.
+Our overarching claim is not that any single measure is universally superior, but rather:
+\begin{quote}
+\emph{Different similarity measures encode different invariances; the best choice depends on the data-generating mechanism, particularly the noise regime, degree of misalignment, and effective sequence length.}
+\end{quote}
+
+% =============================================================================
+% Bibliography entries (to be placed in a .bib file)
+% =============================================================================
+% \bibliographystyle{plain}
+% \bibliography{references}
+
+% Below are the corresponding BibTeX entries for reference:
+%
+% @inproceedings{paparrizos2015kshape,
+%   author    = {Paparrizos, John and Gravano, Luis},
+%   title     = {k-Shape: Efficient and Accurate Clustering of Time Series},
+%   booktitle = {SIGMOD},
+%   year      = {2015}
+% }
+%
+% @article{bagnall2017bakeoff,
+%   author  = {Bagnall, Anthony and Lines, Jason and Bostrom, Aaron and Large, James and Keogh, Eamonn},
+%   title   = {The Great Time Series Classification Bake Off: A Review and Experimental Evaluation of Recent Algorithmic Advances},
+%   journal = {Data Mining and Knowledge Discovery},
+%   year    = {2017}
+% }
+%
+% @inproceedings{cuturi2017softdtw,
+%   author    = {Cuturi, Marco and Blondel, Mathieu},
+%   title     = {Soft-DTW: A Differentiable Loss Function for Time-Series},
+%   booktitle = {ICML},
+%   year      = {2017}
+% }
+%
+% @article{paparrizos2025tscbenchmark,
+%   author  = {Paparrizos, John and others},
+%   title   = {TSCluster: A Benchmark for Time-Series Clustering},
+%   journal = {PVLDB},
+%   year    = {2025}
+% }
+%
+% @article{javed2020benchmark,
+%   author  = {Javed, Ali and Lee, Byung Suk and Riez, Donna M.},
+%   title   = {A Benchmark Study on Time Series Clustering},
+%   journal = {Machine Learning},
+%   year    = {2020}
+% }
+%
+% @article{holder2023msm,
+%   author  = {Holder, Christopher and Bagnall, Anthony},
+%   title   = {Clustering Time Series with MSM Distance},
+%   journal = {Data Mining and Knowledge Discovery},
+%   year    = {2023}
+% }
+%
+% @article{ting2022idk,
+%   author  = {Ting, Kai Ming and others},
+%   title   = {Isolation Distributional Kernel: A New Tool for Kernel Based Anomaly Detection},
+%   journal = {arXiv:2205.09092},
+%   year    = {2022}
+% }
+%
+% @inproceedings{gong2024ctds,
+%   author    = {Gong, Xin and others},
+%   title     = {CTDS: Centralized Time-Series Data Summarization via Isolation Distributional Kernel},
+%   booktitle = {PAKDD},
+%   year      = {2024}
+% }
+%
+% @inproceedings{paparrizos2020normalisation,
+%   author    = {Paparrizos, John and Liu, Chunwei and others},
+%   title     = {Debunking Four Long-Standing Misconceptions of Time-Series Distance Measures},
+%   booktitle = {SIGMOD},
+%   year      = {2020}
+% }
+%
+% @article{stefan2013msm,
+%   author  = {Stefan, Alexandra and Athitsos, Vassilis and Das, Gautam},
+%   title   = {The Move-Split-Merge Metric for Time Series},
+%   journal = {IEEE TKDE},
+%   year    = {2013}
+% }
+%
+% @inproceedings{berndt1994dtw,
+%   author    = {Berndt, Donald J. and Clifford, James},
+%   title     = {Using Dynamic Time Warping to Find Patterns in Time Series},
+%   booktitle = {KDD Workshop},
+%   year      = {1994}
+% }
+%
+% @book{kaufman1990pam,
+%   author    = {Kaufman, Leonard and Rousseeuw, Peter J.},
+%   title     = {Finding Groups in Data: An Introduction to Cluster Analysis},
+%   publisher = {Wiley},
+%   year      = {1990}
+% }
