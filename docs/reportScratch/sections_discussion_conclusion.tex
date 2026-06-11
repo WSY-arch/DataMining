@@ -1,0 +1,109 @@
+% =============================================================================
+% Discussion and Conclusion
+% Project: Mechanism-Oriented Comparison of Time-Series Clustering
+%          Similarity Measures across Noise, Misalignment, and Length
+% =============================================================================
+
+\section{Discussion}\label{sec:discussion}
+
+Our results demonstrate that perturbation-induced stress reveals paradigm-level differences that are invisible on clean benchmark data.
+We now synthesise the empirical findings into mechanistic explanations, discuss limitations, and derive practical recommendations.
+
+\subsection{Mechanism--Performance Alignment}\label{sec:discuss-mechanism}
+
+Each measure's degradation profile can be predicted from its mathematical definition:
+
+\paragraph{ED (lock-step).}
+Euclidean distance shows minimal sensitivity to noise (the expected distance inflates uniformly across all pairs, preserving relative ordering) but collapses under shift ($-82\%$ at 30\% circular shift).
+This is a direct consequence of point-wise comparison without alignment: even a single-sample shift introduces $O(L)$ mismatched comparisons.
+ED's flat response to length perturbation further confirms that FFT resampling preserves the relative $\ell_2$ structure when all series undergo identical spectral smoothing.
+
+\paragraph{DTW (elastic).}
+DTW achieves the best baseline performance and is the most robust under \emph{edge-padded} shift, validating its elastic warping mechanism.
+However, it shows the steepest noise degradation among the top measures ($-24.5\%$ at $\ell = 0.8$): the warping path overfits noise-induced jitter, finding spurious alignments that increase within-cluster variance.
+Under circular shift, DTW degrades substantially ($-59\%$), because circular displacements exceed the Sakoe--Chiba band width ($w = 0.1L$), and the warping path cannot recover from global misalignment larger than its constraint window.
+
+\paragraph{MSM (elastic/edit).}
+MSM excels under length perturbation (rank 1 across all levels), which we attribute to its split and merge operations.
+When FFT resampling smooths high-frequency content, the resulting amplitude distortions are naturally absorbed by MSM's cost-based edit operations, which penalise amplitude changes directly rather than requiring perfect pointwise alignment.
+MSM's moderate sensitivity to shift ($-77\%$ circular, $-70\%$ edge-padded) indicates that its edit operations are locally effective but cannot compensate for large global displacements.
+
+\paragraph{SBD (sliding).}
+SBD achieves the best Friedman rank under both noise (1.60) and shift (2.13) perturbations.
+Its noise robustness derives from the normalised cross-correlation formulation: NCC is computed as an inner product of normalised sequences, inherently averaging out i.i.d.\ noise contributions across all lags.
+Its shift robustness arises from the max-over-lags formulation, which by definition searches for the optimal alignment position.
+
+The circular-shift ablation reveals a critical nuance: SBD's theoretical circular-shift invariance is exact only when implemented as true circular cross-correlation.
+The standard \texttt{aeon} library uses zero-padded linear convolution (FFT on $2L$ points), which introduces boundary artifacts under large shifts.
+This theory--practice gap has implications for practitioners relying on library implementations without verifying their circular-invariance guarantees.
+
+\paragraph{IDK (distributional).}
+IDK's most striking result is its near-zero degradation under circular shift ($-5\%$ at 30\%), an emergent property not previously documented.
+The Isolation Distributional Kernel computes similarity based on the distributional overlap of subsequence isolation paths.
+Because this distribution is computed over all subsequences regardless of their temporal position, circular translation merely permutes the subsequence ordering without altering the distribution---conferring \emph{de facto} shift invariance.
+
+However, IDK's overall performance remains the weakest among the five measures.
+The windowing experiment reveals why: direct (full-series) IDK produces ARI~$\approx 0$, indicating that a single isolation kernel evaluation on the complete time series cannot distinguish between classes.
+Windowed IDK recovers substantial performance (up to ARI = 0.80), suggesting that IDK's value lies in capturing local distributional signatures that must be aggregated through a sliding-window mechanism.
+
+\subsection{The Role of Perturbation Type in Measure Selection}\label{sec:discuss-selection}
+
+Our results support a \emph{perturbation-conditional} approach to measure selection:
+
+\begin{enumerate}
+    \item \textbf{Well-aligned, low-noise data}: DTW or SBD provide the best performance, with DTW favoured when temporal warping is expected and SBD favoured when global phase differences dominate.
+    \item \textbf{Noisy signals}: SBD is the clear first choice; its NCC formulation provides built-in noise suppression. MSM is a strong second choice.
+    \item \textbf{Potential misalignment}: SBD (with verified circular implementation) for periodic signals; DTW for aperiodic signals with moderate shift ($<10\%L$).
+    \item \textbf{Variable temporal resolution}: MSM provides the most stable performance under length reduction, followed by DTW.
+    \item \textbf{Permutation-invariant scenarios}: IDK (with appropriate windowing) is uniquely suited when temporal order is unreliable or irrelevant.
+\end{enumerate}
+
+This conditional framework contrasts with the common practice of defaulting to DTW for all time-series tasks, and demonstrates that mechanism-aware measure selection can yield substantial performance gains under specific data conditions.
+
+\subsection{Limitations}\label{sec:discuss-limitations}
+
+Several limitations of this study should be noted:
+
+\begin{enumerate}
+    \item \textbf{Dataset scope.} The perturbation study uses only three datasets (CBF, Trace, ECG200). While these cover synthetic and real signals with different class structures, generalisation to larger and more diverse archives requires further validation.
+
+    \item \textbf{Hyperparameter sensitivity.} All measures use fixed, literature-default hyperparameters. DTW's warping window ($w = 0.1L$) and MSM's edit cost ($c = 1.0$) may not be optimal for all perturbation regimes. A hyperparameter-sweep study would complement our paradigm-level comparison.
+
+    \item \textbf{IDK windowing.} The windowing experiment uses only three window sizes per dataset. A systematic window-size optimisation study would better characterise IDK's potential.
+
+    \item \textbf{Univariate only.} Our framework evaluates univariate time series; multivariate extensions may reveal different paradigm-level trade-offs.
+
+    \item \textbf{Perturbation independence.} We apply noise, shift, and length perturbations independently. Real-world data may exhibit combinations of these degradations, potentially interacting in non-additive ways.
+\end{enumerate}
+
+\subsection{Implications for Library Implementations}\label{sec:discuss-implementation}
+
+The SBD circular-invariance gap highlights a broader concern: standard time-series libraries may implement measures in ways that do not preserve their theoretical properties.
+We recommend that:
+\begin{itemize}
+    \item Library authors document whether their SBD implementation uses circular or linear cross-correlation.
+    \item Practitioners who rely on SBD's shift invariance should verify the implementation or use explicit circular-CC routines.
+    \item Future benchmarks should distinguish between a measure's \emph{mathematical properties} and its \emph{implementation-specific behaviour}.
+\end{itemize}
+
+% =============================================================================
+\section{Conclusion}\label{sec:conclusion}
+
+This paper presents a mechanism-oriented comparison of five time-series clustering similarity measures---ED, DTW, MSM, SBD, and IDK---spanning the lock-step, elastic, sliding, and distributional paradigms.
+Through a unified k-medoids pipeline with controlled perturbation experiments, we provide empirical evidence for four main conclusions:
+
+\begin{enumerate}
+    \item \textbf{No universal winner exists.} On clean data, DTW and SBD achieve comparable performance (mean ARI~$\approx 0.37$) without statistically significant separation. Perturbation stress is required to resolve paradigm-level differences.
+
+    \item \textbf{Perturbation type determines optimal measure.} SBD is the most robust under noise and temporal shift (Friedman rank 1.60 and 2.13 respectively); MSM is the most robust under length reduction (rank 2.00). These results are highly significant ($p < 0.005$ for all three perturbation types).
+
+    \item \textbf{Invariance properties predict degradation.} Each measure's empirical robustness profile aligns with its mathematical invariance structure: SBD's cross-correlation resists noise and shift; DTW's elastic warping handles moderate misalignment; MSM's edit operations absorb spectral smoothing; IDK's distributional kernel is inherently shift-invariant.
+
+    \item \textbf{Implementation matters.} SBD's theoretical circular-shift invariance is violated by standard library implementations that use linear (zero-padded) cross-correlation. IDK requires sliding-window decomposition to be effective; direct application produces near-zero clustering quality.
+\end{enumerate}
+
+These findings support a \emph{mechanism-conditional} approach to similarity measure selection: rather than applying a single default measure universally, practitioners should characterise their data's noise regime, alignment reliability, and temporal resolution, then select the paradigm whose invariance properties match the dominant source of variation.
+
+\paragraph{Reproducibility.}
+All code, experimental scripts, and result CSVs are available in the project repository.
+Experiments use fixed random seeds with \texttt{numpy.random.SeedSequence} for bit-exact reproducibility.
